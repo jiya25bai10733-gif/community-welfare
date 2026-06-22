@@ -211,7 +211,7 @@ function monitor_network_health() {
   const updateNetworkStatus = () => {
     if (navigator.onLine) {
       statusEl.textContent = 'ONLINE';
-      statusEl.style.borderColor = 'var(--darkBorder)';
+      statusEl.style.borderColor = '#888888';
       statusEl.style.backgroundColor = '#1f2937';
       statusEl.style.color = '#ffffff';
       statusEl.style.borderStyle = 'solid';
@@ -605,7 +605,7 @@ function place_draft_marker(lat, lng, showToast = false, panMap = true) {
     notify.style.color = '#ffffff';
     notify.style.padding = '8px 16px';
     notify.style.fontSize = '11px';
-    notify.style.fontFamily = 'var(--mono_font)';
+    notify.style.fontFamily = "'JetBrains Mono', monospace";
     notify.style.fontWeight = 'bold';
     notify.style.zIndex = '5000';
     notify.style.border = '2px solid #ffffff';
@@ -666,7 +666,7 @@ function toggle_active_tab(targetTabId) {
     }
   });
 
-  const pages = document.querySelectorAll('.page_view');
+  const pages = document.querySelectorAll('.view-panel');
   pages.forEach(p => {
     if (p.getAttribute('id') === `view-${targetTabId}`) {
       p.classList.add('active');
@@ -712,7 +712,7 @@ function bind_ticket_form_actions() {
 
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = 'var(--darkBorder)';
+      dropZone.style.borderColor = '#888888';
       dropZone.style.backgroundColor = '#f3f4f6';
     });
 
@@ -903,7 +903,7 @@ function init_filter_controls() {
 
       if (matches.length === 0) {
         searchDropdown.innerHTML = `
-          <div style="padding: 12px 14px; font-size: 11px; color: var(--text-muted); text-align: center;">
+          <div style="padding: 12px 14px; font-size: 11px; color: #666666; text-align: center;">
             No matching issues found
           </div>
         `;
@@ -917,14 +917,14 @@ function init_filter_controls() {
         item.className = 'autocomplete-item';
         item.style.padding = '8px 12px';
         item.style.cursor = 'pointer';
-        item.style.borderBottom = '1px solid var(--border_light)';
+        item.style.borderBottom = '1px solid #d1d5db';
         item.style.textAlign = 'left';
         item.innerHTML = `
-          <div style="font-weight: bold; font-size: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--mono_font); margin-bottom: 2px;">
+          <div style="font-weight: bold; font-size: 8px; color: #666666; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace; margin-bottom: 2px;">
             [${ticket.category}] #${ticket.id} - ${ticket.status}
           </div>
-          <div style="font-weight: bold; color: var(--main-text-color); font-size: 12px;">${ticket.title}</div>
-          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${ticket.location}</div>
+          <div style="font-weight: bold; color: #1f2937; font-size: 12px;">${ticket.title}</div>
+          <div style="font-size: 10px; color: #666666; margin-top: 2px;">${ticket.location}</div>
         `;
 
         item.addEventListener('click', () => {
@@ -1122,7 +1122,7 @@ function populate_ticket_grid() {
   tbody.innerHTML = '';
   
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No reports match the filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #666666; padding: 20px;">No reports match the filters.</td></tr>`;
     return;
   }
 
@@ -1147,7 +1147,7 @@ function populate_ticket_grid() {
         <div style="display: flex; align-items: center; gap: 6px;">
           <span class="status-badge ${get_status_badge_css(ticket.status)}">${ticket.status}</span>
           ${isOlderThan5Days ? `
-            <button class="btn-toggle-table-pin" data-id="${ticket.id}" style="background: #ffffff; border: 1.5px solid var(--darkBorder); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
+            <button class="btn-toggle-table-pin" data-id="${ticket.id}" style="background: #ffffff; border: 1.5px solid #888888; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
               <i class="ti ${hasPin ? 'ti-map-pin-off' : 'ti-map-pin'}" style="font-size: 10px; color: #000000; font-weight: bold;"></i>
             </button>
           ` : ''}
@@ -1212,15 +1212,15 @@ function draw_active_ticket_queue() {
     item.innerHTML = `
       <div class="sidebar-item-header">
         <div style="display:flex; align-items:center; gap:8px;">
-          <div style="width:16px; height:16px; border-radius:50%; border:1.5px solid var(--darkBorder); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; color:var(--text-muted);">X</div>
+          <div style="width:16px; height:16px; border-radius:50%; border:1.5px solid #888888; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; color:#666666;">X</div>
           <span class="sidebar-item-title">${ticket.title}</span>
         </div>
         <span class="sidebar-item-time">${ticket.reportedTime}</span>
       </div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-left: 24px;">${ticket.location}</div>
+      <div style="font-size: 11px; color: #666666; margin-left: 24px;">${ticket.location}</div>
       <div class="sidebar-item-desc" style="margin-left: 24px;">${ticket.description}</div>
       <div style="margin-top: 12px; margin-left: 24px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:11px; color:var(--text-muted);">Report #${ticket.id}</span>
+        <span style="font-size:11px; color:#666666;">Report #${ticket.id}</span>
         <span class="status-badge ${get_status_badge_css(ticket.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${ticket.status}</span>
       </div>
     `;
@@ -1234,7 +1234,7 @@ function draw_active_ticket_queue() {
   });
 
   if (activeCount === 0) {
-    listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">No active unresolved tickets in this region.</div>';
+    listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:#666666; font-size:11px;">No active unresolved tickets in this region.</div>';
   }
 }
 
@@ -1247,25 +1247,25 @@ function draw_my_reports_list() {
   container.innerHTML = '';
 
   if (userIssues.length === 0) {
-    container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted);">You have not filed any reports yet.</div>`;
+    container.innerHTML = `<div style="text-align:center; padding:20px; color:#666666;">You have not filed any reports yet.</div>`;
     return;
   }
 
   userIssues.forEach(ticket => {
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = 'white-card';
     card.style.padding = '16px';
     card.style.cursor = 'pointer';
     
     card.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border_light); padding-bottom:8px; margin-bottom:8px;">
-        <span style="font-weight:bold; font-family:var(--mono_font); font-size:12px;">#${ticket.id}</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #d1d5db; padding-bottom:8px; margin-bottom:8px;">
+        <span style="font-weight:bold; font-family:'JetBrains Mono', monospace; font-size:12px;">#${ticket.id}</span>
         <span class="status-badge ${get_status_badge_css(ticket.status)}" style="font-size: 8px; min-width:55px; padding:1px 3px;">${ticket.status}</span>
       </div>
       <h3 style="font-size:13px; font-weight:bold; text-transform:uppercase;">${ticket.title}</h3>
-      <p style="font-size:11px; color:var(--text-muted); margin-top:2px;">Location: ${ticket.location}</p>
-      <p style="font-size:11px; margin-top:6px; color:var(--main-text-color); line-height:1.3;">${ticket.description.slice(0, 100)}${ticket.description.length > 100 ? '...' : ''}</p>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:10px; color:var(--text-muted);">
+      <p style="font-size:11px; color:#666666; margin-top:2px;">Location: ${ticket.location}</p>
+      <p style="font-size:11px; margin-top:6px; color:#1f2937; line-height:1.3;">${ticket.description.slice(0, 100)}${ticket.description.length > 100 ? '...' : ''}</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:10px; color:#666666;">
         <span>Date: ${ticket.reportedDate}</span>
         <span>Upvotes: ${ticket.upvotes || 0}</span>
       </div>
@@ -1420,7 +1420,7 @@ function render_leaflet_pins() {
   if (cityCenter) {
     const userLocationIcon = L.divIcon({
       className: 'custom-leaflet-marker user-location-marker-container',
-      html: `<div class="marker-pin user-location"></div><div class="marker-label" style="background-color: #3b82f6; color: #ffffff; border-color: #3b82f6; font-weight: bold; font-family: var(--mono_font); font-size: 9px; padding: 1px 4px;">YOU</div>`,
+      html: `<div class="marker-pin user-location"></div><div class="marker-label" style="background-color: #3b82f6; color: #ffffff; border-color: #3b82f6; font-weight: bold; font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 1px 4px;">YOU</div>`,
       iconSize: [40, 48],
       iconAnchor: [7, 7]
     });
@@ -1463,8 +1463,8 @@ function render_tracking_detail_card() {
   
   if (!ticket) {
     panel.innerHTML = `
-      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex-grow:1; text-align:center; color:var(--text-muted); padding: 40px 20px;">
-        <i class="ti ti-map-pin" style="font-size: 36px; margin-bottom: 12px; color: var(--darkBorder);"></i>
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex-grow:1; text-align:center; color:#666666; padding: 40px 20px;">
+        <i class="ti ti-map-pin" style="font-size: 36px; margin-bottom: 12px; color: #888888;"></i>
         <p style="font-size:13px; font-weight:700; text-transform:uppercase;">No Issue Selected</p>
         <p style="font-size:11px; margin-top:2px;">Select a map pin coordinate marker to load details.</p>
       </div>
@@ -1491,18 +1491,18 @@ function render_tracking_detail_card() {
 
   panel.innerHTML = `
     <h2 style="font-size: 15px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Tracking Details: ${ticket.title}</h2>
-    <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 16px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px;">
+    <div style="font-size: 11px; color: #666666; margin-bottom: 16px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px;">
       <div><strong>ID:</strong> #${ticket.id} | <strong>Location:</strong> ${ticket.location}</div>
-      <div style="margin-top: 4px;"><strong>Current Status:</strong> [ <span style="font-weight:700; color:var(--main-text-color); text-transform:uppercase; letter-spacing:0.05em;">${ticket.status}</span> ] | <strong>Upvotes:</strong> <span id="issue-upvotes-count">${ticket.upvotes || 0}</span></div>
+      <div style="margin-top: 4px;"><strong>Current Status:</strong> [ <span style="font-weight:700; color:#1f2937; text-transform:uppercase; letter-spacing:0.05em;">${ticket.status}</span> ] | <strong>Upvotes:</strong> <span id="issue-upvotes-count">${ticket.upvotes || 0}</span></div>
       <div style="margin-top: 4px; font-family: monospace; font-size:10px;"><strong>Lat/Lng:</strong> ${ticket.coordinates.lat.toFixed(5)}, ${ticket.coordinates.lng.toFixed(5)}</div>
     </div>
     
-    <div style="font-size: 12px; color: var(--main-text-color); line-height: 1.4; margin-bottom: 16px; font-style: italic;">
+    <div style="font-size: 12px; color: #1f2937; line-height: 1.4; margin-bottom: 16px; font-style: italic;">
       Details: ${ticket.description === 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' ? 'No additional description provided.' : ticket.description}
     </div>
 
     ${ticket.imageBase64 ? `
-      <div style="margin-top: 8px; margin-bottom: 16px; border: 2px solid var(--darkBorder); padding: 4px; background: #ffffff;">
+      <div style="margin-top: 8px; margin-bottom: 16px; border: 2px solid #888888; padding: 4px; background: #ffffff;">
         <img src="${ticket.imageBase64}" style="width: 100%; max-height: 160px; object-fit: cover;" alt="Issue Attachment" />
       </div>
     ` : ''}
