@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community Report</title>
+  
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Design System CSS -->
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Main Navigation Header -->
+    <header class="main-header">
+      <div class="logo-section" id="logo-trigger">
+        <div class="logo-icon" style="display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; color:#4b5563;"></div>
+        <span class="logo-text">COMMUNITY REPORT</span>
+      </div>
+      
+      <nav class="main-nav">
+        <a href="#" class="nav-link active" data-target="dashboard">Home</a>
+        <a href="#" class="nav-link" data-target="report">Report Issue</a>
+        <a href="#" class="nav-link" data-target="map">Map</a>
+        <a href="#" class="nav-link" data-target="activity">Activity</a>
+        <a href="#" class="nav-link" data-target="profile">My Profile</a>
+      </nav>
+      
+      <div class="header-right">
+        <div class="search-wrapper" style="position: relative;">
+          <i class="ti ti-search search-icon"></i>
+          <input type="text" class="search-input" id="global-search" placeholder="Search issues..." autocomplete="off">
+          <div id="search-suggestions-dropdown" class="autocomplete-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #ffffff; border: 2px solid var(--border-gray); z-index: 2000; box-shadow: 4px 4px 0px #000000; max-height: 250px; overflow-y: auto; font-family: var(--font-sans); margin-top: 4px;"></div>
+        </div>
+        <span id="connection-status" style="font-size: 10px; font-family: var(--font-mono); font-weight: bold; border: 1.5px solid var(--border-gray); padding: 2px 6px; background-color: #1f2937; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block;">ONLINE</span>
+        <button class="profile-trigger" id="profile-btn" title="View Profile">
+          <i class="ti ti-user"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-content">
+      
+      <!-- 1. DASHBOARD VIEW (HOME) -->
+      <section id="view-dashboard" class="page-view active">
+        <div class="grid-dashboard">
+          <!-- Left Column -->
+          <div class="dashboard-left">
+            <!-- Map Placeholder Card -->
+            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+              <!-- Real-time Google Maps minimap container -->
+              <div id="dashboard-map" style="height: 350px; background-color: #eeeeee; cursor: pointer; position: relative;"></div>
+              
+              <div style="padding: 16px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-gray);">
+                <div>
+                  <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase;">REAL-TIME GOOGLE MAP</h3>
+                  <p style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="dashboard-map-subtext">Interactive City Map: View Reported Issues in Faridabad City</p>
+                </div>
+                <button class="btn btn-wire-border" id="btn-report-redirect">
+                  REPORT NEW ISSUE
+                </button>
+              </div>
+            </div>
+
+            <!-- Reported Issues Table Card -->
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 class="card-title" style="margin-bottom: 0;">REPORTED ISSUES</h2>
+                <div style="display: flex; gap: 8px; font-size: 12px; align-items: center;">
+                  <button class="btn btn-wire-border" id="btn-export-issues" style="height: 28px; padding: 2px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">Export Reports</button>
+                  <span>Sort by</span>
+                  <select class="form-select" id="table-filter-status" style="height: 28px; padding: 2px 8px; font-size: 11px; width: 90px; border: 1px solid var(--border-gray); border-radius: 4px;">
+                    <option value="all">Status</option>
+                    <option value="OPEN">Open</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CLOSED">Closed</option>
+                    <option value="RESOLVED">Resolved</option>
+                  </select>
+                  <select class="form-select" id="table-filter-category" style="height: 28px; padding: 2px 8px; font-size: 11px; width: 95px; border: 1px solid var(--border-gray); border-radius: 4px;">
+                    <option value="all">Category</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Roads">Roads</option>
+                    <option value="Sanitation">Sanitation</option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Interactive Status Legend -->
+              <div style="display: flex; gap: 12px; align-items: center; font-size: 10px; margin-bottom: 16px; border-bottom: 1px solid var(--border-light); padding-bottom: 8px;">
+                <span style="font-weight: bold; text-transform: uppercase; color: var(--text-muted); font-family: var(--font-mono);">STATUS LEGEND:</span>
+                <span><span class="status-badge badge-open" style="font-size: 8px; min-width: 50px; padding: 1px 3px;">OPEN</span> (New)</span>
+                <span><span class="status-badge badge-pending" style="font-size: 8px; min-width: 50px; padding: 1px 3px;">PENDING</span> (In Progress)</span>
+                <span><span class="status-badge badge-resolved" style="font-size: 8px; min-width: 50px; padding: 1px 3px;">RESOLVED</span> (Fixed)</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 15%;">Issue ID</th>
+                      <th style="width: 40%;">Description</th>
+                      <th style="width: 18%;">Location</th>
+                      <th style="width: 15%;">Category</th>
+                      <th style="width: 12%;">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="issues-table-body">
+                    <!-- Dynamic Rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column (Sidebar) -->
+          <aside class="dashboard-right">
+            <!-- System Metrics Widget -->
+            <div class="card" style="padding: 16px; margin-bottom: 16px;">
+              <h2 class="card-title" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px;">
+                SYSTEM METRICS
+              </h2>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center;">
+                <div style="border: 1.5px solid var(--border-gray); padding: 8px; background-color: #f9fafb;">
+                  <div style="font-size: 18px; font-weight: bold; font-family: var(--font-mono);" id="stats-total-count">0</div>
+                  <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px;">Total Reports</div>
+                </div>
+                <div style="border: 1.5px solid var(--border-gray); padding: 8px; background-color: #f9fafb;">
+                  <div style="font-size: 18px; font-weight: bold; font-family: var(--font-mono);" id="stats-resolved-count">0</div>
+                  <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px;">Resolved</div>
+                </div>
+                <div style="border: 1.5px solid var(--border-gray); padding: 8px; background-color: #f9fafb;">
+                  <div style="font-size: 18px; font-weight: bold; font-family: var(--font-mono);" id="stats-open-count">0</div>
+                  <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px;">Open</div>
+                </div>
+                <div style="border: 1.5px solid var(--border-gray); padding: 8px; background-color: #f9fafb;">
+                  <div style="font-size: 18px; font-weight: bold; font-family: var(--font-mono);" id="stats-pending-count">0</div>
+                  <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px;">Pending</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="padding: 16px;">
+              <h2 class="card-title" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 16px;">
+                ACTIVE COMMUNITY ISSUES
+              </h2>
+              <div class="sidebar-list" id="active-issues-list">
+                <!-- Dynamic active list items -->
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 2. REPORT ISSUE VIEW -->
+      <section id="view-report" class="page-view">
+        <div class="grid-centered-modal">
+          <main class="card" style="background-color:#ffffff; padding: 40px; border: 1px solid var(--border-light); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); border-radius: 8px;">
+            <header style="text-align: center; margin-bottom: 32px;">
+              <h1 style="font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Report an Issue</h1>
+              <p style="font-size: 13px; color: #64748b;">Report local public infrastructure issues such as potholes, broken streetlights, overflowing waste bins, or water leakages.</p>
+            </header>
+            
+            <form id="issue-report-form" style="display:flex; flex-direction:column; gap: 24px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="issue-category" style="color:#374151; font-weight:500;">Issue Category</label>
+                <select class="form-select" id="issue-category" style="border-color:#d1d5db; border-radius:6px; height:40px;" required>
+                  <option value="" disabled selected>Select a category</option>
+                  <option value="Utilities">Utilities</option>
+                  <option value="Roads">Roads</option>
+                  <option value="Sanitation">Sanitation</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="issue-summary" style="color:#374151; font-weight:500;">Short Summary / Subject</label>
+                <input type="text" class="form-input" id="issue-summary" style="border-color:#d1d5db; border-radius:6px; height:40px;" required>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0; position: relative;">
+                <label class="form-label" for="issue-location" style="color:#374151; font-weight:500;">Location / Landmark</label>
+                <input type="text" class="form-input" id="issue-location" placeholder="e.g. Near Block A East path" style="border-color:#d1d5db; border-radius:6px; height:40px;" autocomplete="off" required>
+                <div id="location-autocomplete-dropdown" class="autocomplete-dropdown" style="display: none;"></div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="color:#374151; font-weight:500;">Geographical Position</label>
+                <div style="display:flex; gap:8px;">
+                  <input type="text" class="form-input" id="issue-lat" placeholder="Latitude" style="border-color:#d1d5db; border-radius:6px; height:40px; flex:1;" readonly required>
+                  <input type="text" class="form-input" id="issue-lng" placeholder="Longitude" style="border-color:#d1d5db; border-radius:6px; height:40px; flex:1;" readonly required>
+                </div>
+                <span style="font-size:10px; color:#9ca3af; margin-top:4px; display:block; line-height:1.3;">Tip: Type a location or landmark in the field above, and we will automatically resolve its coordinates and center the map.</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="issue-description" style="color:#374151; font-weight:500;">Detailed Description</label>
+                <textarea class="form-textarea" id="issue-description" style="border-color:#d1d5db; border-radius:6px; min-height:100px; resize:none;" required></textarea>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="color:#374151; font-weight:500;">Upload Screenshot (Optional)</label>
+                <div class="upload-zone" id="drop-zone" style="border: 1px dashed #d1d5db; border-radius:6px; padding:24px; cursor:pointer;">
+                  <svg aria-hidden="true" style="margin: 0 auto 8px auto; height: 48px; width: 48px; color: #9ca3af;" fill="none" stroke="currentColor" viewBox="0 0 48 48">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                  </svg>
+                  <div class="upload-label" style="color:#111827; font-size:13px; font-weight:500;">Upload a file <span style="font-weight:400; color:#6b7280;">or drag and drop</span></div>
+                  <div class="upload-sublabel" style="color:#9ca3af; font-size:10px;">PNG, JPG, GIF UP TO 5MB</div>
+                  <input type="file" id="file-upload" style="display: none;">
+                </div>
+                <div id="file-upload-preview" style="display:none; font-size:11px; color:#4b5563; margin-top:6px;"></div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;">
+                <button type="button" class="btn btn-secondary" id="btn-cancel-report" style="border-radius:6px; border-color:#d1d5db; padding:10px 24px; color:#374151; font-weight:500;">Cancel</button>
+                <button type="submit" class="btn btn-primary" style="background-color:#0f172a; border-radius:6px; padding:10px 24px; font-weight:500;">Submit Issue</button>
+              </div>
+            </form>
+          </main>
+        </div>
+      </section>
+
+      <!-- 3. MAP VIEW -->
+      <section id="view-map" class="page-view">
+        <div class="grid-map-view">
+          <!-- Interactive Map Container -->
+          <div class="map-left-container" style="position: relative;">
+            <div class="map-canvas-container" id="interactive-map">
+              <!-- Leaflet Map instance will render here -->
+            </div>
+            <button id="btn-locate-me" class="btn btn-wire-border" style="position: absolute; top: 12px; right: 12px; z-index: 1000; background-color: #ffffff; font-weight: bold; border-width: 2px; height: 32px; padding: 0 12px; font-size: 11px; text-transform: uppercase;">[ Locate Me ]</button>
+
+            <div class="card" style="border-top: none; padding: 16px;">
+              <h3 style="font-size: 13px; font-weight: 700; text-transform: uppercase;">INTERACTIVE REAL-TIME MAP</h3>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                Double-click anywhere on the map to set coordinates for a new report. Click on markers to select issues and load tracking details.
+              </p>
+            </div>
+          </div>
+
+          <!-- Sidebar tracking details -->
+          <aside class="map-sidebar">
+            <div class="card" style="height: 100%; min-height: 480px; padding: 24px; display: flex; flex-direction: column;">
+              <div id="tracking-detail-panel" style="display: flex; flex-direction: column; height: 100%;">
+                <!-- Dynamic Content Loaded by JS -->
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 4. ACTIVITY VIEW -->
+      <section id="view-activity" class="page-view">
+        <div class="grid-single-col">
+          <div class="card" style="padding: 24px; margin-bottom: 24px;">
+            <h1 style="font-size: 22px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">LIVE COMMUNITY ACTIVITY</h1>
+            <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+              A real-time, transparent log of all reported infrastructure problems and administrative resolution updates across the area.
+            </p>
+            
+            <!-- Filter controls inside card container -->
+            <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+              <button class="btn btn-tab-filter active" data-filter="all">All Actions</button>
+              <button class="btn btn-tab-filter" data-filter="new">New Reports</button>
+              <button class="btn btn-tab-filter" data-filter="update">Updates</button>
+              <button class="btn btn-tab-filter" data-filter="resolved">Resolved</button>
+            </div>
+          </div>
+
+          <!-- Feed list -->
+          <div class="activity-list" id="activity-feed-list">
+            <!-- Dynamic Feed Cards -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. USER PROFILE VIEW -->
+      <section id="view-profile" class="page-view">
+        <div class="grid-profile-view">
+          <!-- Left Sidebar -->
+          <aside class="profile-left">
+            <div class="card" style="display: flex; flex-direction: column; align-items: center; padding: 24px;">
+              <div class="profile-avatar">X</div>
+              <h2 style="font-size: 14px; font-weight: 700; text-align: center; margin-bottom: 4px;">Resident User #402</h2>
+              <p style="font-size: 11px; color: var(--text-muted); text-align: center; margin-bottom: 24px;" id="profile-location-text">Faridabad Resident • Sector 15</p>
+              
+              <div class="profile-stats-container">
+                <div class="profile-stat-box">
+                  <div class="profile-stat-val" id="profile-reported-count">4</div>
+                  <div class="profile-stat-lbl">Reported</div>
+                </div>
+                <div class="profile-stat-box">
+                  <div class="profile-stat-val" id="profile-resolved-count">2</div>
+                  <div class="profile-stat-lbl">Resolved</div>
+                </div>
+              </div>
+
+              <div style="width: 100%; text-align: left;">
+                <h3 style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-primary); margin-bottom: 12px; letter-spacing: 0.05em;">Notification Preferences</h3>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="display: flex; align-items: center; font-size: 11px; color: var(--text-muted); cursor: pointer;">
+                    <input type="checkbox" checked style="margin-right: 8px; width: 13px; height: 13px; border: 1px solid var(--border-gray); border-radius: 2px;">
+                    Email Alerts on Status Change
+                  </label>
+                  <label style="display: flex; align-items: center; font-size: 11px; color: var(--text-muted); cursor: pointer;">
+                    <input type="checkbox" checked style="margin-right: 8px; width: 13px; height: 13px; border: 1px solid var(--border-gray); border-radius: 2px;">
+                    Weekly Community Digests
+                  </label>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Right Content Area -->
+          <section class="profile-right-content">
+            <div class="card" style="padding: 24px;">
+              <h1 style="font-size: 16px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">MY REPORTED ISSUES</h1>
+              <p style="font-size: 11px; color: var(--text-muted); border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 24px;">
+                Review and trace active progress details for specific community complaints logged by your account profile.
+              </p>
+              
+              <div class="sidebar-list" id="profile-issues-list" style="gap: 16px;">
+                <!-- Dynamic profile reported issues cards -->
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Leaflet Map library -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Interactive JavaScript logic -->
+  <script src="app.js"></script>
+</body>
+</html>
