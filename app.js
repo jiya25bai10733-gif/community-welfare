@@ -1,7 +1,11 @@
-// App state
-const state = {
+// ==========================================
+// FMC CITIZEN HELPLINE PORTAL - CLIENT STORE
+// ==========================================
+
+// Global state holding municipal complaints
+const fmc_store = {
   activeTab: 'dashboard',
-  issues: [
+  tickets: [
     {
       id: '1248',
       title: 'Broken Streetlight',
@@ -93,15 +97,15 @@ const state = {
       ]
     }
   ],
-  selectedIssueId: '1245',
-  activityFilter: 'all',
-  searchQuery: '',
-  zoomLevel: 14,
-  upvotedIssues: [],
-  forcedHistoryPins: []
+  focus_ticket_id: '1245',
+  feed_filter: 'all',
+  search_q: '',
+  map_zoom: 14,
+  upvoted_registry: [],
+  pin_overrides: []
 };
 
-// Activity logs matching screenshot 4, adapted to Faridabad
+// Activity logs feed synced with FMC actions
 let activityLogs = [
   {
     id: 'log-1',
@@ -145,357 +149,304 @@ let activityLogs = [
   }
 ];
 
-// Leaflet map instances
+// Leaflet global instances
 let dashboardMapInstance = null;
 let interactiveMapInstance = null;
 
-// Map markers collections
+// Leaflet active marker caches
 let dashboardMarkers = [];
 let interactiveMarkers = [];
 let placementMarker = null;
 
-let cityCenter = [28.4089, 77.3178]; // Faridabad City Center Coordinates as default fallback
+let cityCenter = [28.4089, 77.3178]; // Faridabad sector 15 as base fallback
 
-// Global variables for persistence and image uploads
+// Local caches
 let customIssues = [];
 let customLogs = [];
 let uploadedImageBase64 = null;
 
-// Initialize application
+// Bootstrap FMC App
 document.addEventListener('DOMContentLoaded', () => {
-  loadPersistedData();
-  setupConnectionStatus();
-  setDefaultFormCoordinates();
-  setupNavigation();
-  setupFormHandlers();
-  setupFiltersAndSearch();
-  setupMapControls();
-  initMaps();
-  detectLocationAndInit();
-  setupLocationAutocomplete();
-  renderApp();
+  restore_local_cache();
+  monitor_network_health();
+  prefill_default_coords();
+  init_tabs();
+  bind_ticket_form_actions();
+  init_filter_controls();
+  bind_map_controls();
+  bootstrap_leaflet_maps();
+  acquire_user_gps();
+  init_photon_typeahead();
+  sync_ui_elements();
 });
 
-// Load persisted custom issues & activity logs
-function loadPersistedData() {
+// Restore localStorage Cache
+function restore_local_cache() {
   try {
     customIssues = JSON.parse(localStorage.getItem('community_custom_issues')) || [];
     customLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
-    state.upvotedIssues = JSON.parse(localStorage.getItem('community_upvoted_issues')) || [];
-    state.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
+    fmc_store.upvoted_registry = JSON.parse(localStorage.getItem('community_upvoted_issues')) || [];
+    fmc_store.pin_overrides = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
     
-    // Restore default issues upvotes increments
-    const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
-    state.issues.forEach(issue => {
-      if (defaultIssuesUpvotes[issue.id]) {
-        issue.upvotes = (issue.upvotes || 0) + defaultIssuesUpvotes[issue.id];
+    // Default tickets upvote restorator
+    const cachedUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
+    fmc_store.tickets.forEach(t => {
+      if (cachedUpvotes[t.id]) {
+        t.upvotes = (t.upvotes || 0) + cachedUpvotes[t.id];
       }
     });
-  } catch (e) {
-    console.error("Failed to load local storage data:", e);
+  } catch (err) {
+    console.warn("Local storage cache corrupted, resetting to defaults.", err);
   }
 
-  // Prepend custom issues to the state.issues
-  state.issues = [...customIssues, ...state.issues];
-  
-  // Prepend custom logs to the activityLogs
+  fmc_store.tickets = [...customIssues, ...fmc_store.tickets];
   activityLogs = [...customLogs, ...activityLogs];
 }
 
-// Connection online/offline listener
-function setupConnectionStatus() {
+// Watch browser network health
+function monitor_network_health() {
   const statusEl = document.getElementById('connection-status');
   if (!statusEl) return;
 
-  function updateStatus() {
+  const updateNetworkStatus = () => {
     if (navigator.onLine) {
-      statusEl.textContent = "ONLINE";
-      statusEl.style.backgroundColor = "#1f2937";
-      statusEl.style.color = "#ffffff";
-      statusEl.style.borderColor = "var(--border-gray)";
-      statusEl.style.borderStyle = "solid";
+      statusEl.textContent = 'ONLINE';
+      statusEl.style.borderColor = 'var(--border-gray)';
+      statusEl.style.backgroundColor = '#1f2937';
+      statusEl.style.color = '#ffffff';
+      statusEl.style.borderStyle = 'solid';
     } else {
-      statusEl.textContent = "OFFLINE";
-      statusEl.style.backgroundColor = "#ffffff";
-      statusEl.style.color = "#000000";
-      statusEl.style.borderColor = "#ff0000";
-      statusEl.style.borderStyle = "dashed";
+      statusEl.textContent = 'OFFLINE';
+      statusEl.style.borderColor = '#000000';
+      statusEl.style.backgroundColor = '#ffffff';
+      statusEl.style.color = '#000000';
+      statusEl.style.borderStyle = 'dashed';
     }
-  }
+  };
 
-  window.addEventListener('online', updateStatus);
-  window.addEventListener('offline', updateStatus);
-  updateStatus(); // run initial check
+  window.addEventListener('online', updateNetworkStatus);
+  window.addEventListener('offline', updateNetworkStatus);
+  updateNetworkStatus(); // trigger baseline check
 }
 
-// Set default form coordinates on load
-function setDefaultFormCoordinates() {
+// Set form default coordinates
+function prefill_default_coords() {
   const latField = document.getElementById('issue-lat');
   const lngField = document.getElementById('issue-lng');
   if (latField) latField.value = cityCenter[0].toFixed(5);
   if (lngField) lngField.value = cityCenter[1].toFixed(5);
 }
 
-// Autocomplete Location using Photon API (Komoot OpenStreetMap)
-let autocompleteTimeout = null;
-
-function setupLocationAutocomplete() {
+// Photon typeahead for address suggestions
+function init_photon_typeahead() {
   const inputEl = document.getElementById('issue-location');
   const dropdownEl = document.getElementById('location-autocomplete-dropdown');
   if (!inputEl || !dropdownEl) return;
 
-  inputEl.addEventListener('input', () => {
-    const val = inputEl.value.trim();
-    clearTimeout(autocompleteTimeout);
-    
-    if (val.length < 3) {
+  let debounceTimer = null;
+
+  inputEl.addEventListener('input', (e) => {
+    const query = e.target.value.trim();
+    clearTimeout(debounceTimer);
+
+    if (query.length < 3) {
       dropdownEl.style.display = 'none';
       dropdownEl.innerHTML = '';
       return;
     }
 
-    // Debounce to prevent heavy API calling
-    autocompleteTimeout = setTimeout(() => {
-      let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=5`;
+    debounceTimer = setTimeout(() => {
+      let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`;
       if (cityCenter && cityCenter.length === 2) {
         url += `&lat=${cityCenter[0]}&lon=${cityCenter[1]}`;
       }
 
       fetch(url)
-        .then(response => {
-          if (!response.ok) throw new Error("Network error during autocomplete");
-          return response.json();
+        .then(res => {
+          if (!res.ok) throw new Error("Photon lookup failed");
+          return res.json();
         })
         .then(data => {
-          const features = data.features || [];
-          renderAutocompleteResults(features, inputEl, dropdownEl);
-
-          // Real-time coordinates update as the user types
-          if (features.length > 0) {
-            const firstFeature = features[0];
-            const geom = firstFeature.geometry;
-            if (geom && geom.coordinates && geom.coordinates.length === 2) {
-              const lng = geom.coordinates[0];
-              const lat = geom.coordinates[1];
-              setNewIssuePlacementMarker(lat, lng, false, true);
-            }
-          }
+          draw_typeahead_options(data.features || [], inputEl, dropdownEl);
         })
-        .catch(error => {
-          console.error("Autocomplete search failed:", error);
+        .catch(err => {
+          console.warn("Photon autocomplete API rate limit or outage, fallback geocode on blur.", err);
         });
-    }, 400);
+    }, 250);
   });
 
-  // Close dropdown when user clicks elsewhere
   document.addEventListener('click', (e) => {
-    if (e.target !== inputEl && e.target !== dropdownEl && !dropdownEl.contains(e.target)) {
+    if (!inputEl.contains(e.target) && !dropdownEl.contains(e.target)) {
       dropdownEl.style.display = 'none';
     }
   });
 
-  // Re-open list on focus if query length is valid
   inputEl.addEventListener('focus', () => {
     if (inputEl.value.trim().length >= 3 && dropdownEl.children.length > 0) {
       dropdownEl.style.display = 'block';
     }
   });
 
-  // Geocode automatically on blur (losing focus)
+  // Geocode on blur to ensure form is always populated
   inputEl.addEventListener('blur', () => {
     setTimeout(() => {
-      const val = inputEl.value.trim();
-      if (val.length < 3) return;
+      const locationText = inputEl.value.trim();
+      if (!locationText) return;
 
-      let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=1`;
-      if (cityCenter && cityCenter.length === 2) {
-        url += `&lat=${cityCenter[0]}&lon=${cityCenter[1]}`;
-      }
+      const latField = document.getElementById('issue-lat');
+      const hasCoords = latField && latField.value;
 
-      fetch(url)
-        .then(response => {
-          if (!response.ok) throw new Error("Geocoding on blur failed");
-          return response.json();
-        })
-        .then(data => {
-          if (data.features && data.features.length > 0) {
-            const feature = data.features[0];
-            const geom = feature.geometry;
-            if (geom && geom.coordinates && geom.coordinates.length === 2) {
-              const lng = geom.coordinates[0];
-              const lat = geom.coordinates[1];
-              
-              const latField = document.getElementById('issue-lat');
-              const lngField = document.getElementById('issue-lng');
-              if (latField) latField.value = lat.toFixed(5);
-              if (lngField) lngField.value = lng.toFixed(5);
-              
-              setNewIssuePlacementMarker(lat, lng);
-              console.log(`Auto-filled coordinates on blur for: "${val}" -> (${lat}, ${lng})`);
-            }
-          }
-        })
-        .catch(error => {
-          console.error("Geocoding on blur error:", error);
-        });
-    }, 250);
-  });
-
-  // Geocode automatically when hitting Enter
-  inputEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const val = inputEl.value.trim();
-      if (val.length >= 3) {
-        e.preventDefault(); // Prevent form submit immediately
-        
-        let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=1`;
+      if (!hasCoords) {
+        let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(locationText)}&limit=1`;
         if (cityCenter && cityCenter.length === 2) {
           url += `&lat=${cityCenter[0]}&lon=${cityCenter[1]}`;
         }
-
         fetch(url)
-          .then(res => {
-            if (!res.ok) throw new Error("Geocoding on Enter failed");
-            return res.json();
-          })
+          .then(res => res.json())
           .then(data => {
             if (data.features && data.features.length > 0) {
-              const geom = data.features[0].geometry;
-              if (geom && geom.coordinates && geom.coordinates.length === 2) {
-                const lng = geom.coordinates[0];
-                const lat = geom.coordinates[1];
-                
-                const latField = document.getElementById('issue-lat');
-                const lngField = document.getElementById('issue-lng');
-                if (latField) latField.value = lat.toFixed(5);
-                if (lngField) lngField.value = lng.toFixed(5);
-                
-                setNewIssuePlacementMarker(lat, lng);
-                dropdownEl.style.display = 'none';
-                console.log(`Auto-filled coordinates on Enter for: "${val}" -> (${lat}, ${lng})`);
-              }
+              const feat = data.features[0];
+              const coords = feat.geometry.coordinates;
+              const lat = coords[1];
+              const lng = coords[0];
+              
+              const latEl = document.getElementById('issue-lat');
+              const lngEl = document.getElementById('issue-lng');
+              if (latEl) latEl.value = lat.toFixed(5);
+              if (lngEl) lngEl.value = lng.toFixed(5);
+
+              place_draft_marker(lat, lng, false, true);
             }
           })
-          .catch(err => console.error("Geocoding on Enter error:", err));
+          .catch(err => console.warn("Fallback geocoder on blur failed:", err));
       }
+    }, 300);
+  });
+
+  // Geocode on Enter
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const locationText = inputEl.value.trim();
+      if (!locationText) return;
+
+      let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(locationText)}&limit=1`;
+      if (cityCenter && cityCenter.length === 2) {
+        url += `&lat=${cityCenter[0]}&lon=${cityCenter[1]}`;
+      }
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          if (data.features && data.features.length > 0) {
+            const feat = data.features[0];
+            const coords = feat.geometry.coordinates;
+            const lat = coords[1];
+            const lng = coords[0];
+            
+            const latEl = document.getElementById('issue-lat');
+            const lngEl = document.getElementById('issue-lng');
+            if (latEl) latEl.value = lat.toFixed(5);
+            if (lngEl) lngEl.value = lng.toFixed(5);
+
+            place_draft_marker(lat, lng, true, true);
+            dropdownEl.style.display = 'none';
+          }
+        })
+        .catch(err => console.warn("Enter key geocoder failed:", err));
     }
   });
 }
 
-function renderAutocompleteResults(features, inputEl, dropdownEl) {
+// Render autocomplete dropdown options
+function draw_typeahead_options(features, inputEl, dropdownEl) {
   dropdownEl.innerHTML = '';
-  
   if (features.length === 0) {
     dropdownEl.style.display = 'none';
     return;
   }
 
-  features.forEach(feature => {
-    const p = feature.properties;
-    const geom = feature.geometry;
+  features.forEach(feat => {
+    const props = feat.properties || {};
+    const geom = feat.geometry || {};
+    const coords = geom.coordinates || [];
+
+    if (coords.length < 2) return;
+
+    const name = props.name || '';
+    const street = props.street || '';
+    const city = props.city || props.state || '';
+    const labelText = [name, street, city].filter(Boolean).join(', ');
+
+    if (!labelText) return;
+
+    const div = document.createElement('div');
+    div.className = 'autocomplete-item';
+    div.textContent = labelText;
     
-    const parts = [];
-    if (p.name) parts.push(p.name);
-    if (p.street) parts.push(p.street);
-    if (p.locality) parts.push(p.locality);
-    if (p.district) parts.push(p.district);
-    if (p.city && p.city !== p.name) parts.push(p.city);
-    if (p.state) parts.push(p.state);
-    if (p.country && p.country !== p.name) parts.push(p.country);
-    
-    const formattedAddress = parts.join(', ');
-    
-    const item = document.createElement('div');
-    item.className = 'autocomplete-item';
-    item.textContent = formattedAddress;
-    
-    item.addEventListener('click', () => {
-      inputEl.value = formattedAddress;
+    div.addEventListener('click', () => {
+      inputEl.value = labelText;
       dropdownEl.style.display = 'none';
-      
-      if (geom && geom.coordinates && geom.coordinates.length === 2) {
-        const lng = geom.coordinates[0];
-        const lat = geom.coordinates[1];
-        
-        const latField = document.getElementById('issue-lat');
-        const lngField = document.getElementById('issue-lng');
-        if (latField) latField.value = lat.toFixed(5);
-        if (lngField) lngField.value = lng.toFixed(5);
-        
-        // Pin location on interactive map for visual feedback
-        setNewIssuePlacementMarker(lat, lng);
-        
-        console.log(`Autocomplete selected: ${formattedAddress} at (${lat}, ${lng})`);
-      }
+
+      const lat = coords[1];
+      const lng = coords[0];
+
+      const latField = document.getElementById('issue-lat');
+      const lngField = document.getElementById('issue-lng');
+      if (latField) latField.value = lat.toFixed(5);
+      if (lngField) lngField.value = lng.toFixed(5);
+
+      place_draft_marker(lat, lng, true, true);
     });
-    
-    dropdownEl.appendChild(item);
+
+    dropdownEl.appendChild(div);
   });
 
   dropdownEl.style.display = 'block';
 }
 
-// Dynamic location tracking and reverse geocoding
-function detectLocationAndInit() {
-  console.log("Tracking location...");
-  
+// Acquire browser location
+function acquire_user_gps() {
   if (!navigator.geolocation) {
-    console.warn("Geolocation is not supported by this browser. Falling back to Faridabad.");
-    initFallbackLocation();
+    console.warn("Geolocation unsupported by host browser. Falling back to default.");
+    trigger_fallback_gps();
     return;
   }
 
-  // Update map subtext to show we are locating
   const subtextEl = document.getElementById('dashboard-map-subtext');
   if (subtextEl) {
-    subtextEl.textContent = "Detecting your location to show nearby issues...";
+    subtextEl.textContent = "Locating citizen coordinates...";
   }
 
   navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      console.log(`Location detected: ${lat}, ${lng}`);
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
       
       cityCenter = [lat, lng];
-      
-      // Update form coordinates
-      setDefaultFormCoordinates();
-      
-      // Recalculate issues coordinates relative to this new center
-      updateIssuesCoordinates(lat, lng);
-      
-      // Re-center both map instances
-      recenterMaps(lat, lng);
-      
-      // Fetch reverse geocode details
-      fetchReverseGeocode(lat, lng);
+      prefill_default_coords();
+      realign_tickets_to_coords(lat, lng);
+      pan_map_cameras(lat, lng);
+      run_osm_reverse_lookup(lat, lng);
     },
-    (error) => {
-      console.warn(`Geolocation failed/denied (Code ${error.code}): ${error.message}. Falling back to Faridabad.`);
-      initFallbackLocation();
+    (err) => {
+      console.warn(`Geolocation lookup rejected/timed out (code: ${err.code}). Reverting to FMC Sector 15.`, err.message);
+      trigger_fallback_gps();
     },
-    {
-      enableHighAccuracy: true,
-      timeout: 8000,
-      maximumAge: 0
-    }
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
   );
 }
 
-function initFallbackLocation() {
-  // Use Faridabad as default center
+// Fallback to Faridabad Sector 15 baseline
+function trigger_fallback_gps() {
   cityCenter = [28.4089, 77.3178];
-  setDefaultFormCoordinates();
-  updateIssuesCoordinates(cityCenter[0], cityCenter[1]);
-  recenterMaps(cityCenter[0], cityCenter[1]);
-  
-  // Set fallback text values
-  updateLocationTexts("Faridabad", "Sector 15", "Mathura Road");
+  prefill_default_coords();
+  realign_tickets_to_coords(cityCenter[0], cityCenter[1]);
+  pan_map_cameras(cityCenter[0], cityCenter[1]);
+  update_localized_ui_strings("Faridabad", "Sector 15", "Mathura Road");
 }
 
-function updateIssuesCoordinates(lat, lng) {
-  // Original offsets from default Faridabad center (28.4089, 77.3178)
+// Realign mock tickets relative to current location via offsets
+function realign_tickets_to_coords(lat, lng) {
   const offsets = {
     '1248': { dLat: 0.0061, dLng: -0.0038 },
     '1245': { dLat: 0.0021, dLng: 0.0012 },
@@ -504,10 +455,10 @@ function updateIssuesCoordinates(lat, lng) {
     '1254': { dLat: -0.0109, dLng: 0.0032 }
   };
   
-  state.issues.forEach(issue => {
-    const offset = offsets[issue.id];
+  fmc_store.tickets.forEach(ticket => {
+    const offset = offsets[ticket.id];
     if (offset) {
-      issue.coordinates = {
+      ticket.coordinates = {
         lat: lat + offset.dLat,
         lng: lng + offset.dLng
       };
@@ -515,76 +466,59 @@ function updateIssuesCoordinates(lat, lng) {
   });
 }
 
-function recenterMaps(lat, lng) {
+// Pan cameras of both map objects
+function pan_map_cameras(lat, lng) {
   if (dashboardMapInstance) {
     dashboardMapInstance.setView([lat, lng], 13);
   }
   if (interactiveMapInstance) {
-    interactiveMapInstance.setView([lat, lng], state.zoomLevel);
+    interactiveMapInstance.setView([lat, lng], fmc_store.map_zoom);
   }
 }
 
-function fetchReverseGeocode(lat, lng) {
+// Reverse Geocoding with OSM Nominatim API
+function run_osm_reverse_lookup(lat, lng) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
   
-  fetch(url, {
-    headers: {
-      'Accept-Language': 'en'
-    }
-  })
-    .then(response => {
-      if (!response.ok) throw new Error("Network response was not ok");
-      return response.json();
+  fetch(url, { headers: { 'Accept-Language': 'en' } })
+    .then(res => {
+      if (!res.ok) throw new Error("OSM Nominatim rate limit/outage");
+      return res.json();
     })
     .then(data => {
-      const address = data.address || {};
-      const city = address.city || address.town || address.village || address.municipality || address.county || 'Local Area';
-      const suburb = address.suburb || address.neighbourhood || address.quarter || address.city_district || address.road || 'Local Suburb';
-      const road = address.road || address.pedestrian || suburb || 'Main Road';
+      const addr = data.address || {};
+      const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || 'Local Area';
+      const suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || addr.road || 'Local Suburb';
+      const road = addr.road || addr.pedestrian || suburb || 'Main Road';
       
-      console.log(`Reverse geocoded location: ${suburb}, ${city}`);
-      
-      updateLocationTexts(city, suburb, road);
+      update_localized_ui_strings(city, suburb, road);
     })
-    .catch(error => {
-      console.error("Reverse geocoding failed:", error);
-      // Fallback to generic names based on Lat/Lng
-      const city = "Local Area";
-      const suburb = `Near ${lat.toFixed(3)}, ${lng.toFixed(3)}`;
-      const road = "Main Road";
-      updateLocationTexts(city, suburb, road);
+    .catch(err => {
+      console.warn("Reverse lookup failed, applying coordinates format fallback.", err);
+      update_localized_ui_strings("Local Area", `Sector [${lat.toFixed(3)}, ${lng.toFixed(3)}]`, "Service Lane");
     });
 }
 
-function updateLocationTexts(city, suburb, road) {
-  // Update dashboard map subtext
+// Rewrite location references in UI strings to make it feel local
+function update_localized_ui_strings(city, suburb, road) {
   const subtextEl = document.getElementById('dashboard-map-subtext');
   if (subtextEl) {
     subtextEl.textContent = `Interactive City Map: View Reported Issues in ${city}`;
   }
   
-  // Update profile location
   const profileLocEl = document.getElementById('profile-location-text');
   if (profileLocEl) {
     profileLocEl.textContent = `${city} Resident • ${suburb}`;
   }
   
-  // Update issue location names dynamically to make them feel local
-  state.issues.forEach(issue => {
-    if (issue.id === '1248') {
-      issue.location = `${suburb} Market Road`;
-    } else if (issue.id === '1245') {
-      issue.location = `${suburb} Central Road`;
-    } else if (issue.id === '1246') {
-      issue.location = `${suburb} Residential Area`;
-    } else if (issue.id === '1244') {
-      issue.location = `${road} Metro Station Pillar`;
-    } else if (issue.id === '1254') {
-      issue.location = `${road} Service Lane`;
-    }
+  fmc_store.tickets.forEach(ticket => {
+    if (ticket.id === '1248') ticket.location = `${suburb} Market Road`;
+    else if (ticket.id === '1245') ticket.location = `${suburb} Central Road`;
+    else if (ticket.id === '1246') ticket.location = `${suburb} Residential Area`;
+    else if (ticket.id === '1244') ticket.location = `${road} Metro Station Pillar`;
+    else if (ticket.id === '1254') ticket.location = `${road} Service Lane`;
   });
 
-  // Update activity logs dynamically to make them feel local
   activityLogs.forEach(log => {
     if (log.id === 'log-1') {
       log.location = `${suburb} Market`;
@@ -604,101 +538,92 @@ function updateLocationTexts(city, suburb, road) {
     }
   });
 
-  // Re-render everything with new values
-  renderApp();
+  sync_ui_elements();
 }
 
-// Map Initialization
-function initMaps() {
-  // Google Maps tile template
-  const googleRoadTiles = 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-  const tileOptions = {
-    maxZoom: 20,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-    attribution: 'Map data &copy; <a href="https://www.google.com/maps">Google Maps</a>'
-  };
+// Leaflet map instantiators
+function bootstrap_leaflet_maps() {
+  const mapTemplate = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  const attrib = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-  // 1. Dashboard Minimap
-  const dashboardMapEl = document.getElementById('dashboard-map');
-  if (dashboardMapEl) {
+  const mapElDash = document.getElementById('dashboard-map');
+  if (mapElDash && !dashboardMapInstance) {
     dashboardMapInstance = L.map('dashboard-map', {
       zoomControl: false,
-      dragging: false,
-      touchZoom: false,
-      scrollWheelZoom: false,
       doubleClickZoom: false,
-      boxZoom: false
+      boxZoom: false,
+      dragPan: false,
+      keyboard: false,
+      scrollWheelZoom: false
     }).setView(cityCenter, 13);
 
-    L.tileLayer(googleRoadTiles, tileOptions).addTo(dashboardMapInstance);
+    L.tileLayer(mapTemplate, { attribution: attrib }).addTo(dashboardMapInstance);
+
+    mapElDash.addEventListener('click', () => {
+      switchTab('map');
+    });
   }
 
-  // 2. Interactive Map View
-  const interactiveMapEl = document.getElementById('interactive-map');
-  if (interactiveMapEl) {
+  const mapElInteractive = document.getElementById('interactive-map');
+  if (mapElInteractive && !interactiveMapInstance) {
     interactiveMapInstance = L.map('interactive-map', {
-      zoomControl: false
-    }).setView(cityCenter, state.zoomLevel);
+      doubleClickZoom: false
+    }).setView(cityCenter, fmc_store.map_zoom);
 
-    L.tileLayer(googleRoadTiles, tileOptions).addTo(interactiveMapInstance);
+    L.tileLayer(mapTemplate, { attribution: attrib }).addTo(interactiveMapInstance);
   }
 }
 
-function setNewIssuePlacementMarker(lat, lng, showToast = false, panMap = true) {
-  // Auto-populate form coordinate inputs
-  const latField = document.getElementById('issue-lat');
-  const lngField = document.getElementById('issue-lng');
-  if (latField) latField.value = lat.toFixed(5);
-  if (lngField) lngField.value = lng.toFixed(5);
+// Places a temporary draft marker representing the new report coordinates
+function place_draft_marker(lat, lng, showToast = false, panMap = true) {
+  if (!interactiveMapInstance) return;
 
-  // Add/move placement marker on map
-  if (interactiveMapInstance) {
-    if (placementMarker) {
-      placementMarker.setLatLng([lat, lng]);
-    } else {
-      const placementIcon = L.divIcon({
-        className: 'custom-leaflet-marker',
-        html: `<div class="marker-pin active-new" style="background-color:#5A4FCF; border-color:#000000; animation: bounce 0.6s infinite alternate;"></div><div class="marker-label" style="background-color:#5A4FCF; color:#ffffff; border-color:#000000;">New Issue Pin</div>`,
-        iconSize: [28, 40],
-        iconAnchor: [6, 6]
-      });
-      placementMarker = L.marker([lat, lng], { icon: placementIcon }).addTo(interactiveMapInstance);
-    }
+  if (placementMarker) {
+    interactiveMapInstance.removeLayer(placementMarker);
+  }
 
-    if (panMap) {
-      interactiveMapInstance.setView([lat, lng], 15);
-    }
+  const pinIcon = L.divIcon({
+    className: 'custom-leaflet-marker',
+    html: '<div class="marker-pin active-new" style="background-color: #8b5cf6; border-color: #8b5cf6;"></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  });
+
+  placementMarker = L.marker([lat, lng], { icon: pinIcon }).addTo(interactiveMapInstance);
+
+  if (panMap) {
+    interactiveMapInstance.setView([lat, lng], 15);
   }
 
   if (showToast) {
-    // Flash a notification so the user knows they pinned a location
-    const msg = document.createElement('div');
-    msg.style.position = 'absolute';
-    msg.style.bottom = '80px';
-    msg.style.left = '50%';
-    msg.style.transform = 'translateX(-50%)';
-    msg.style.backgroundColor = '#0f172a';
-    msg.style.color = '#ffffff';
-    msg.style.padding = '8px 16px';
-    msg.style.borderRadius = '4px';
-    msg.style.fontSize = '12px';
-    msg.style.zIndex = '10000';
-    msg.style.boxShadow = '0 2px 10px rgba(0,0,0,0.3)';
-    msg.textContent = `Pinned coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}. Auto-filled in report form!`;
-    
-    const mapContainer = document.getElementById('interactive-map');
-    if (mapContainer) {
-      mapContainer.appendChild(msg);
-      setTimeout(() => msg.remove(), 3000);
+    const notify = document.createElement('div');
+    notify.style.position = 'absolute';
+    notify.style.bottom = '20px';
+    notify.style.left = '50%';
+    notify.style.transform = 'translateX(-50%)';
+    notify.style.backgroundColor = '#000000';
+    notify.style.color = '#ffffff';
+    notify.style.padding = '8px 16px';
+    notify.style.fontSize = '11px';
+    notify.style.fontFamily = 'var(--font-mono)';
+    notify.style.fontWeight = 'bold';
+    notify.style.zIndex = '5000';
+    notify.style.border = '2px solid #ffffff';
+    notify.style.boxShadow = '4px 4px 0px #000000';
+    notify.textContent = `COORDINATES TIED: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+    const container = document.getElementById('view-map');
+    if (container) {
+      container.appendChild(notify);
+      setTimeout(() => notify.remove(), 2500);
     }
   }
 }
 
-// Navigation Setup
-function setupNavigation() {
-  const navLinks = document.querySelectorAll('.nav-link');
-  
-  navLinks.forEach(link => {
+// Navigation Tabs Manager
+function init_tab_navigation() {
+  const triggers = document.querySelectorAll('.nav-link');
+  triggers.forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       const target = link.getAttribute('data-target');
@@ -706,7 +631,6 @@ function setupNavigation() {
     });
   });
 
-  // Logo redirect to Dashboard
   const logoTrigger = document.getElementById('logo-trigger');
   if (logoTrigger) {
     logoTrigger.addEventListener('click', () => {
@@ -714,7 +638,6 @@ function setupNavigation() {
     });
   }
 
-  // Profile icon header redirect
   const profileBtn = document.getElementById('profile-btn');
   if (profileBtn) {
     profileBtn.addEventListener('click', () => {
@@ -722,230 +645,222 @@ function setupNavigation() {
     });
   }
 
-  // Minimap widget redirect to Map View
-  const minimap = document.getElementById('dashboard-map');
-  if (minimap) {
-    minimap.addEventListener('click', () => {
-      switchTab('map');
-    });
-  }
-
-  // Report issue redirect from Home minimap banner
   const reportRedirect = document.getElementById('btn-report-redirect');
   if (reportRedirect) {
-    reportRedirect.addEventListener('click', (e) => {
-      e.stopPropagation();
+    reportRedirect.addEventListener('click', () => {
       switchTab('report');
     });
   }
 }
 
-function switchTab(targetTabId) {
-  state.activeTab = targetTabId;
-  
-  // Update header links
-  document.querySelectorAll('.nav-link').forEach(link => {
-    if (link.getAttribute('data-target') === targetTabId) {
-      link.classList.add('active');
+// Toggle active view panel
+function toggle_active_tab(targetTabId) {
+  fmc_store.activeTab = targetTabId;
+
+  const links = document.querySelectorAll('.nav-link');
+  links.forEach(l => {
+    if (l.getAttribute('data-target') === targetTabId) {
+      l.classList.add('active');
     } else {
-      link.classList.remove('active');
+      l.classList.remove('active');
     }
   });
 
-  // Toggle active views
-  document.querySelectorAll('.page-view').forEach(view => {
-    if (view.id === `view-${targetTabId}`) {
-      view.classList.add('active');
+  const pages = document.querySelectorAll('.page-view');
+  pages.forEach(p => {
+    if (p.getAttribute('id') === `view-${targetTabId}`) {
+      p.classList.add('active');
     } else {
-      view.classList.remove('active');
+      p.classList.remove('active');
     }
   });
 
-  // Refresh Leaflet size calculation when tabs change
-  if (targetTabId === 'map' && interactiveMapInstance) {
+  if (targetTabId === 'map') {
     setTimeout(() => {
-      interactiveMapInstance.invalidateSize();
-      renderMap();
-    }, 100);
-  } else if (targetTabId === 'dashboard' && dashboardMapInstance) {
-    setTimeout(() => {
-      dashboardMapInstance.invalidateSize();
-      renderMap();
+      if (interactiveMapInstance) {
+        interactiveMapInstance.invalidateSize();
+        // Snap back to user center if no issue is selected
+        if (!fmc_store.focus_ticket_id && cityCenter) {
+          interactiveMapInstance.setView(cityCenter, fmc_store.map_zoom);
+        }
+      }
     }, 100);
   }
+  
+  if (targetTabId === 'dashboard') {
+    setTimeout(() => {
+      if (dashboardMapInstance) {
+        dashboardMapInstance.invalidateSize();
+        if (cityCenter) {
+          dashboardMapInstance.setView(cityCenter, 13);
+        }
+      }
+    }, 100);
+  }
+
+  sync_ui_elements();
 }
 
-// Setup Form Handlers
-function setupFormHandlers() {
-  const form = document.getElementById('issue-report-form');
-  const cancelBtn = document.getElementById('btn-cancel-report');
+// Bind file uploads & ticket form submit actions
+function bind_ticket_form_actions() {
   const dropZone = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-upload');
-  const filePreview = document.getElementById('file-upload-preview');
+  const previewContainer = document.getElementById('file-upload-preview');
 
-  if (dropZone) {
-    // Drag and drop feedback
-    ['dragenter', 'dragover'].forEach(name => {
-      dropZone.addEventListener(name, (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-      });
+  if (dropZone && fileInput) {
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--border-gray)';
+      dropZone.style.backgroundColor = '#f3f4f6';
     });
 
-    ['dragleave', 'drop'].forEach(name => {
-      dropZone.addEventListener(name, (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
+    ['dragleave', 'dragend'].forEach(evt => {
+      dropZone.addEventListener(evt, () => {
+        dropZone.style.borderColor = '#d1d5db';
+        dropZone.style.backgroundColor = 'transparent';
       });
-    });
-
-    dropZone.addEventListener('click', () => {
-      if (fileInput) fileInput.click();
     });
 
     dropZone.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      if (dt.files.length > 0 && fileInput) {
-        fileInput.files = dt.files;
-        const file = dt.files[0];
-        if (filePreview) {
-          filePreview.textContent = `Selected file: ${file.name}`;
-          filePreview.style.display = 'block';
-        }
-        // Convert to Base64
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          uploadedImageBase64 = ev.target.result;
-        };
-        reader.readAsDataURL(file);
+      e.preventDefault();
+      dropZone.style.borderColor = '#d1d5db';
+      dropZone.style.backgroundColor = 'transparent';
+
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        process_attached_file(files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        process_attached_file(e.target.files[0]);
       }
     });
   }
 
-  if (fileInput && filePreview) {
-    fileInput.addEventListener('change', () => {
-      if (fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        filePreview.textContent = `Selected file: ${file.name}`;
-        filePreview.style.display = 'block';
-        // Convert to Base64
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          uploadedImageBase64 = ev.target.result;
-        };
-        reader.readAsDataURL(file);
+  function process_attached_file(file) {
+    if (!file.type.match('image.*')) {
+      alert("Invalid file format. Please upload an image (PNG, JPG, GIF).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      uploadedImageBase64 = e.target.result;
+      if (previewContainer) {
+        previewContainer.style.display = 'block';
+        previewContainer.textContent = `Screenshot attached: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
       }
-    });
+    };
+    reader.readAsDataURL(file);
   }
 
-  if (cancelBtn) {
-    cancelBtn.addEventListener('click', () => {
-      if (form) form.reset();
-      if (filePreview) filePreview.style.display = 'none';
-      uploadedImageBase64 = null;
-      if (placementMarker && interactiveMapInstance) {
-        interactiveMapInstance.removeLayer(placementMarker);
-        placementMarker = null;
-      }
-      setDefaultFormCoordinates();
-      switchTab('dashboard');
-    });
-  }
-
-  // Form Submit
+  // Form Submit Handler
+  const form = document.getElementById('issue-report-form');
   if (form) {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      
+
       const category = document.getElementById('issue-category').value;
       const title = document.getElementById('issue-summary').value;
-      const location = document.getElementById('issue-location').value;
-      const description = document.getElementById('issue-description').value || 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+      const locationName = document.getElementById('issue-location').value;
       const lat = parseFloat(document.getElementById('issue-lat').value);
       const lng = parseFloat(document.getElementById('issue-lng').value);
-      
-      // Generate a random ID
-      const newId = String(Math.floor(1000 + Math.random() * 9000));
+      const description = document.getElementById('issue-description').value;
 
-      const newIssue = {
-        id: newId,
-        title: title,
-        description: description,
-        location: location,
-        category: category,
+      if (!category || !title || !locationName || isNaN(lat) || isNaN(lng) || !description) {
+        alert("Validation error: All form fields are required.");
+        return;
+      }
+
+      const ticket_id = String(Math.floor(1000 + Math.random() * 9000));
+      const formattedDate = new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      const newTicket = {
+        id: ticket_id,
+        title,
+        description,
+        location: locationName,
+        category,
         status: 'OPEN',
         reportedTime: 'Just now',
-        reportedDate: 'June 22, 2026',
+        reportedDate: formattedDate,
         reporter: 'Resident User #402',
         coordinates: { lat, lng },
-        imageBase64: uploadedImageBase64,
+        upvotes: 0,
         timeline: [
-          { title: 'Report Logged', time: 'Just now', complete: true }
+          { title: 'Report Logged', time: 'Just now', complete: true },
+          { title: 'Verification Assigned', time: 'Pending', complete: false }
         ]
       };
 
-      // Add to custom issues array and persist to local storage
-      customIssues.unshift(newIssue);
+      if (uploadedImageBase64) {
+        newTicket.imageBase64 = uploadedImageBase64;
+      }
+
+      // Append to local caches & localStorage
+      customIssues.unshift(newTicket);
       localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
 
-      // Add to custom logs array and persist to local storage
       const newLog = {
         id: `log-${Date.now()}`,
-        location: location,
+        location: locationName,
         time: 'JUST NOW',
-        desc: `Resident User #402 filed a <span class="font-bold">NEW REPORT: Issue #${newId} (${title})</span> near the ${location} area.`,
+        desc: `New complaint ticket <span class="font-bold">#${ticket_id} (${title})</span> filed under ${category}. Status is OPEN.`,
         tag: 'NEW',
         type: 'new'
       };
+
       customLogs.unshift(newLog);
       localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
-
-      // Prepend to issues state
-      state.issues.unshift(newIssue);
-      state.selectedIssueId = newId;
       activityLogs.unshift(newLog);
 
-      // Reset Form & placements
+      // Prepend to runtime state
+      fmc_store.tickets.unshift(newTicket);
+      fmc_store.focus_ticket_id = ticket_id;
+
+      // Reset form variables
       form.reset();
-      if (filePreview) filePreview.style.display = 'none';
       uploadedImageBase64 = null;
+      if (previewContainer) {
+        previewContainer.style.display = 'none';
+        previewContainer.textContent = '';
+      }
       if (placementMarker && interactiveMapInstance) {
         interactiveMapInstance.removeLayer(placementMarker);
         placementMarker = null;
       }
-      setDefaultFormCoordinates();
+      prefill_default_coords();
 
-      // Refresh UI & switch tab to Dashboard
-      renderApp();
-      switchTab('dashboard');
+      // UI Sync
+      toggle_active_tab('dashboard');
+    });
+  }
+
+  const cancelBtn = document.getElementById('btn-cancel-report');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      if (form) form.reset();
+      uploadedImageBase64 = null;
+      if (previewContainer) {
+        previewContainer.style.display = 'none';
+        previewContainer.textContent = '';
+      }
+      prefill_default_coords();
+      toggle_active_tab('dashboard');
     });
   }
 }
 
-// Map Controls Setup
-function setupMapControls() {
-  const zoomInBtn = document.getElementById('zoom-in');
-  if (zoomInBtn) {
-    zoomInBtn.addEventListener('click', () => {
-      if (interactiveMapInstance) interactiveMapInstance.zoomIn();
-    });
-  }
-
-  const zoomOutBtn = document.getElementById('zoom-out');
-  if (zoomOutBtn) {
-    zoomOutBtn.addEventListener('click', () => {
-      if (interactiveMapInstance) interactiveMapInstance.zoomOut();
-    });
-  }
-
-  const zoomResetBtn = document.getElementById('zoom-reset');
-  if (zoomResetBtn) {
-    zoomResetBtn.addEventListener('click', () => {
-      if (interactiveMapInstance) interactiveMapInstance.setView(cityCenter, 14);
-    });
-  }
-
-  // Locate Me button listener
+// Bind Map Controls
+function bind_map_controls() {
   const locateMeBtn = document.getElementById('btn-locate-me');
   if (locateMeBtn) {
     locateMeBtn.addEventListener('click', () => {
@@ -961,18 +876,16 @@ function setupMapControls() {
   }
 }
 
-// Setup Filters & Search
-function setupFiltersAndSearch() {
-  // Global search input & suggestions dropdown
+// Filter and Search Actions Setup
+function init_filter_controls() {
   const searchInput = document.getElementById('global-search');
   const searchDropdown = document.getElementById('search-suggestions-dropdown');
   if (searchInput && searchDropdown) {
     searchInput.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase().trim();
-      state.searchQuery = query;
+      fmc_store.search_q = query;
       
-      // Filter dashboard table immediately
-      renderIssuesTable();
+      populate_ticket_grid();
 
       if (!query) {
         searchDropdown.style.display = 'none';
@@ -980,12 +893,12 @@ function setupFiltersAndSearch() {
         return;
       }
 
-      // Filter matching issues
-      const matches = state.issues.filter(issue => 
-        issue.title.toLowerCase().includes(query) || 
-        issue.description.toLowerCase().includes(query) || 
-        issue.location.toLowerCase().includes(query) || 
-        issue.id.includes(query)
+      // Query parser matching tickets
+      const matches = fmc_store.tickets.filter(t => 
+        t.title.toLowerCase().includes(query) || 
+        t.description.toLowerCase().includes(query) || 
+        t.location.toLowerCase().includes(query) || 
+        t.id.includes(query)
       );
 
       if (matches.length === 0) {
@@ -999,7 +912,7 @@ function setupFiltersAndSearch() {
       }
 
       searchDropdown.innerHTML = '';
-      matches.forEach(issue => {
+      matches.forEach(ticket => {
         const item = document.createElement('div');
         item.className = 'autocomplete-item';
         item.style.padding = '8px 12px';
@@ -1008,23 +921,20 @@ function setupFiltersAndSearch() {
         item.style.textAlign = 'left';
         item.innerHTML = `
           <div style="font-weight: bold; font-size: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-mono); margin-bottom: 2px;">
-            [${issue.category}] #${issue.id} - ${issue.status}
+            [${ticket.category}] #${ticket.id} - ${ticket.status}
           </div>
-          <div style="font-weight: bold; color: var(--text-primary); font-size: 12px;">${issue.title}</div>
-          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${issue.location}</div>
+          <div style="font-weight: bold; color: var(--text-primary); font-size: 12px;">${ticket.title}</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${ticket.location}</div>
         `;
 
         item.addEventListener('click', () => {
-          searchInput.value = issue.title;
-          state.searchQuery = '';
+          searchInput.value = ticket.title;
+          fmc_store.search_q = '';
           searchDropdown.style.display = 'none';
           
-          // Select and show on map
-          state.selectedIssueId = issue.id;
-          switchTab('map');
-          
-          // Re-render dashboard table to remove filter
-          renderIssuesTable();
+          fmc_store.focus_ticket_id = ticket.id;
+          toggle_active_tab('map');
+          populate_ticket_grid();
         });
 
         searchDropdown.appendChild(item);
@@ -1032,7 +942,6 @@ function setupFiltersAndSearch() {
       searchDropdown.style.display = 'block';
     });
 
-    // Close when clicking outside
     document.addEventListener('click', (e) => {
       if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
         searchDropdown.style.display = 'none';
@@ -1040,30 +949,27 @@ function setupFiltersAndSearch() {
     });
   }
 
-  // Table filters
   const filterStatus = document.getElementById('table-filter-status');
   if (filterStatus) {
     filterStatus.addEventListener('change', () => {
-      renderIssuesTable();
+      populate_ticket_grid();
     });
   }
 
   const filterCategory = document.getElementById('table-filter-category');
   if (filterCategory) {
     filterCategory.addEventListener('change', () => {
-      renderIssuesTable();
+      populate_ticket_grid();
     });
   }
 
-  // Export button click listener
+  // Export Reports Button Trigger
   const exportBtn = document.getElementById('btn-export-issues');
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-      // Helper to format values for CSV
       const escapeCSV = (str) => {
         if (str === undefined || str === null) return '';
         let val = String(str);
-        // If the string contains double quotes, commas, or newlines, wrap it in double quotes and escape existing quotes
         if (val.includes('"') || val.includes(',') || val.includes('\n') || val.includes('\r')) {
           val = '"' + val.replace(/"/g, '""') + '"';
         }
@@ -1075,32 +981,32 @@ function setupFiltersAndSearch() {
         'Status', 'Upvotes', 'Reported Date', 'Reported Time', 'Reporter', 'Description'
       ];
 
-      const rows = state.issues.map(issue => {
-        const lat = issue.coordinates ? issue.coordinates.lat : '';
-        const lng = issue.coordinates ? issue.coordinates.lng : '';
+      const rows = fmc_store.tickets.map(t => {
+        const lat = t.coordinates ? t.coordinates.lat : '';
+        const lng = t.coordinates ? t.coordinates.lng : '';
         return [
-          escapeCSV(issue.id),
-          escapeCSV(issue.category),
-          escapeCSV(issue.title),
-          escapeCSV(issue.location),
+          escapeCSV(t.id),
+          escapeCSV(t.category),
+          escapeCSV(t.title),
+          escapeCSV(t.location),
           escapeCSV(lat),
           escapeCSV(lng),
-          escapeCSV(issue.status),
-          escapeCSV(issue.upvotes),
-          escapeCSV(issue.reportedDate),
-          escapeCSV(issue.reportedTime),
-          escapeCSV(issue.reporter),
-          escapeCSV(issue.description)
+          escapeCSV(t.status),
+          escapeCSV(t.upvotes),
+          escapeCSV(t.reportedDate),
+          escapeCSV(t.reportedTime),
+          escapeCSV(t.reporter),
+          escapeCSV(t.description)
         ].join(',');
       });
 
-      // Add Byte Order Mark (BOM) for UTF-8 compatibility with Excel
+      // Inject UTF-8 BOM so MS Excel renders Hindi & unicode symbols correctly
       const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute("href", url);
-      downloadAnchor.setAttribute("download", `community_reports_${Date.now()}.csv`);
+      downloadAnchor.setAttribute("download", `fmc_community_reports_${Date.now()}.csv`);
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
@@ -1108,33 +1014,31 @@ function setupFiltersAndSearch() {
     });
   }
 
-  // Activity filter tabs
   const activityTabs = document.querySelectorAll('#view-activity .btn-tab-filter');
   activityTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       activityTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      state.activityFilter = tab.getAttribute('data-filter');
-      renderActivityFeed();
+      fmc_store.feed_filter = tab.getAttribute('data-filter');
+      draw_live_action_feed();
     });
   });
 }
 
-// Render Master Coordinator
-function renderApp() {
-  renderStats();
-  renderIssuesTable();
-  renderActiveIssuesSidebar();
-  renderActivityFeed();
-  renderProfileIssues();
-  renderMap();
+// Master coordinator to update UI components
+function sync_ui_elements() {
+  recalculate_dashboard_metrics();
+  populate_ticket_grid();
+  draw_active_ticket_queue();
+  draw_live_action_feed();
+  draw_my_reports_list();
+  refresh_map_views();
 }
 
-// Render Stats counters
-function renderStats() {
-  // Profile counts
-  const userReported = state.issues.filter(i => i.reporter === 'Resident User #402').length;
-  const userResolved = state.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
+// Recalculate stats counters
+function recalculate_dashboard_metrics() {
+  const userReported = fmc_store.tickets.filter(t => t.reporter === 'Resident User #402').length;
+  const userResolved = fmc_store.tickets.filter(t => t.reporter === 'Resident User #402' && (t.status === 'RESOLVED' || t.status === 'CLOSED')).length;
 
   const reportedEl = document.getElementById('profile-reported-count');
   if (reportedEl) reportedEl.textContent = userReported;
@@ -1142,11 +1046,10 @@ function renderStats() {
   const resolvedEl = document.getElementById('profile-resolved-count');
   if (resolvedEl) resolvedEl.textContent = userResolved;
 
-  // System Metrics counts
-  const totalReports = state.issues.length;
-  const resolvedReports = state.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
-  const openReports = state.issues.filter(i => i.status === 'OPEN').length;
-  const pendingReports = state.issues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
+  const totalReports = fmc_store.tickets.length;
+  const resolvedReports = fmc_store.tickets.filter(t => t.status === 'RESOLVED' || t.status === 'CLOSED').length;
+  const openReports = fmc_store.tickets.filter(t => t.status === 'OPEN').length;
+  const pendingReports = fmc_store.tickets.filter(t => t.status === 'PENDING' || t.status === 'IN PROGRESS').length;
 
   const totalEl = document.getElementById('stats-total-count');
   if (totalEl) totalEl.textContent = totalReports;
@@ -1161,44 +1064,61 @@ function renderStats() {
   if (pendingEl) pendingEl.textContent = pendingReports;
 }
 
-// Helpers for badges
-function getStatusBadgeClass(status) {
-  switch (status.toUpperCase()) {
+// CSS Badges color mapper
+function get_status_badge_css(status) {
+  switch (status) {
     case 'OPEN': return 'badge-open';
-    case 'PENDING': return 'badge-pending';
+    case 'PENDING':
+    case 'IN PROGRESS': return 'badge-pending';
     case 'CLOSED': return 'badge-closed';
     case 'RESOLVED': return 'badge-resolved';
     default: return 'badge-open';
   }
 }
 
-// Filter issues by search, category and status
-function getFilteredIssues() {
+// Filter tickets dataset based on filters & search query
+function filter_ticket_dataset() {
   const statusFilterEl = document.getElementById('table-filter-status');
   const categoryFilterEl = document.getElementById('table-filter-category');
 
   const statusFilter = statusFilterEl ? statusFilterEl.value : 'all';
   const categoryFilter = categoryFilterEl ? categoryFilterEl.value : 'all';
 
-  return state.issues.filter(issue => {
-    const matchesSearch = 
-      issue.id.includes(state.searchQuery) ||
-      issue.title.toLowerCase().includes(state.searchQuery) ||
-      issue.location.toLowerCase().includes(state.searchQuery);
-    
-    const matchesStatus = (statusFilter === 'all') || (issue.status === statusFilter);
-    const matchesCategory = (categoryFilter === 'all') || (issue.category === categoryFilter);
-    
-    return matchesSearch && matchesStatus && matchesCategory;
+  return fmc_store.tickets.filter(ticket => {
+    // Status filter
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'PENDING') {
+        if (ticket.status !== 'PENDING' && ticket.status !== 'IN PROGRESS') return false;
+      } else if (ticket.status !== statusFilter) {
+        return false;
+      }
+    }
+
+    // Category filter
+    if (categoryFilter !== 'all' && ticket.category !== categoryFilter) {
+      return false;
+    }
+
+    // Search query matching
+    if (fmc_store.search_q) {
+      const q = fmc_store.search_q;
+      const titleMatch = ticket.title.toLowerCase().includes(q);
+      const descMatch = ticket.description.toLowerCase().includes(q);
+      const locMatch = ticket.location.toLowerCase().includes(q);
+      const idMatch = ticket.id.includes(q);
+      if (!titleMatch && !descMatch && !locMatch && !idMatch) return false;
+    }
+
+    return true;
   });
 }
 
-// Render Dashboard table
-function renderIssuesTable() {
+// Populate ticket rows on Dashboard grid
+function populate_ticket_grid() {
   const tbody = document.getElementById('issues-table-body');
   if (!tbody) return;
 
-  const filtered = getFilteredIssues();
+  const filtered = filter_ticket_dataset();
   tbody.innerHTML = '';
   
   if (filtered.length === 0) {
@@ -1206,28 +1126,28 @@ function renderIssuesTable() {
     return;
   }
 
-  filtered.forEach(issue => {
-    const isResolvedOrClosed = issue.status === 'RESOLVED' || issue.status === 'CLOSED';
+  filtered.forEach(ticket => {
+    const isResolvedOrClosed = ticket.status === 'RESOLVED' || ticket.status === 'CLOSED';
     let isOlderThan5Days = false;
-    if (isResolvedOrClosed && issue.resolvedDate) {
-      const resolvedTime = new Date(issue.resolvedDate).getTime();
+    if (isResolvedOrClosed && ticket.resolvedDate) {
+      const resolvedTime = new Date(ticket.resolvedDate).getTime();
       const currentTime = new Date().getTime();
       const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
       isOlderThan5Days = diffDays > 5;
     }
-    const hasPin = state.forcedHistoryPins && state.forcedHistoryPins.includes(issue.id);
+    const hasPin = fmc_store.pin_overrides && fmc_store.pin_overrides.includes(ticket.id);
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="issue-id-cell" data-id="${issue.id}">#${issue.id}</td>
-      <td>${issue.title} - ${issue.description}</td>
-      <td>${issue.location}</td>
-      <td>${issue.category}</td>
+      <td class="issue-id-cell" data-id="${ticket.id}">#${ticket.id}</td>
+      <td>${ticket.title} - ${ticket.description}</td>
+      <td>${ticket.location}</td>
+      <td>${ticket.category}</td>
       <td>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="status-badge ${getStatusBadgeClass(issue.status)}">${issue.status}</span>
+          <span class="status-badge ${get_status_badge_css(ticket.status)}">${ticket.status}</span>
           ${isOlderThan5Days ? `
-            <button class="btn-toggle-table-pin" data-id="${issue.id}" style="background: #ffffff; border: 1.5px solid var(--border-gray); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
+            <button class="btn-toggle-table-pin" data-id="${ticket.id}" style="background: #ffffff; border: 1.5px solid var(--border-gray); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
               <i class="ti ${hasPin ? 'ti-map-pin-off' : 'ti-map-pin'}" style="font-size: 10px; color: #000000; font-weight: bold;"></i>
             </button>
           ` : ''}
@@ -1235,34 +1155,34 @@ function renderIssuesTable() {
       </td>
     `;
 
-    // Click ID to view in map tracking
+    // Click ticket ID cell to load in map tab
     const cell = tr.querySelector('.issue-id-cell');
     if (cell) {
       cell.addEventListener('click', () => {
-        state.selectedIssueId = issue.id;
-        switchTab('map');
+        fmc_store.focus_ticket_id = ticket.id;
+        toggle_active_tab('map');
       });
     }
 
-    // Bind pin toggle button
+    // Toggle Pin button next to status badges
     if (isOlderThan5Days) {
       const pinBtn = tr.querySelector('.btn-toggle-table-pin');
       if (pinBtn) {
         pinBtn.addEventListener('click', (e) => {
-          e.stopPropagation(); // Don't trigger cell view click
-          if (!state.forcedHistoryPins) {
-            state.forcedHistoryPins = [];
+          e.stopPropagation(); // Avoid triggering cell click redirection
+          if (!fmc_store.pin_overrides) {
+            fmc_store.pin_overrides = [];
           }
-          const idx = state.forcedHistoryPins.indexOf(issue.id);
+          const idx = fmc_store.pin_overrides.indexOf(ticket.id);
           if (idx === -1) {
-            state.forcedHistoryPins.push(issue.id);
+            fmc_store.pin_overrides.push(ticket.id);
           } else {
-            state.forcedHistoryPins.splice(idx, 1);
+            fmc_store.pin_overrides.splice(idx, 1);
           }
-          localStorage.setItem('community_forced_history_pins', JSON.stringify(state.forcedHistoryPins));
+          localStorage.setItem('community_forced_history_pins', JSON.stringify(fmc_store.pin_overrides));
           
-          renderMapMarkers();
-          renderIssuesTable();
+          render_leaflet_pins();
+          populate_ticket_grid();
         });
       }
     }
@@ -1271,8 +1191,8 @@ function renderIssuesTable() {
   });
 }
 
-// Render Dashboard Sidebar (Active / unresolved issues)
-function renderActiveIssuesSidebar() {
+// Populate homepage Active Issues Sidebar
+function draw_active_ticket_queue() {
   const listContainer = document.getElementById('active-issues-list');
   if (!listContainer) return;
 
@@ -1280,9 +1200,9 @@ function renderActiveIssuesSidebar() {
 
   let activeCount = 0;
 
-  state.issues.forEach(issue => {
-    if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') {
-      return; // Skip resolved and closed issues
+  fmc_store.tickets.forEach(ticket => {
+    if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
+      return; // active list only shows unresolved issues
     }
     activeCount++;
 
@@ -1293,37 +1213,37 @@ function renderActiveIssuesSidebar() {
       <div class="sidebar-item-header">
         <div style="display:flex; align-items:center; gap:8px;">
           <div style="width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border-gray); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; color:var(--text-muted);">X</div>
-          <span class="sidebar-item-title">${issue.title}</span>
+          <span class="sidebar-item-title">${ticket.title}</span>
         </div>
-        <span class="sidebar-item-time">${issue.reportedTime}</span>
+        <span class="sidebar-item-time">${ticket.reportedTime}</span>
       </div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-left: 24px;">${issue.location}</div>
-      <div class="sidebar-item-desc" style="margin-left: 24px;">${issue.description}</div>
+      <div style="font-size: 11px; color: var(--text-muted); margin-left: 24px;">${ticket.location}</div>
+      <div class="sidebar-item-desc" style="margin-left: 24px;">${ticket.description}</div>
       <div style="margin-top: 12px; margin-left: 24px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:11px; color:var(--text-muted);">Report #${issue.id}</span>
-        <span class="status-badge ${getStatusBadgeClass(issue.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${issue.status}</span>
+        <span style="font-size:11px; color:var(--text-muted);">Report #${ticket.id}</span>
+        <span class="status-badge ${get_status_badge_css(ticket.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${ticket.status}</span>
       </div>
     `;
 
     item.addEventListener('click', () => {
-      state.selectedIssueId = issue.id;
-      switchTab('map');
+      fmc_store.focus_ticket_id = ticket.id;
+      toggle_active_tab('map');
     });
 
     listContainer.appendChild(item);
   });
 
   if (activeCount === 0) {
-    listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">No active issues to display.</div>';
+    listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">No active unresolved tickets in this region.</div>';
   }
 }
 
 // Render User Profile Reports List
-function renderProfileIssues() {
+function draw_my_reports_list() {
   const container = document.getElementById('profile-issues-list');
   if (!container) return;
 
-  const userIssues = state.issues.filter(i => i.reporter === 'Resident User #402');
+  const userIssues = fmc_store.tickets.filter(t => t.reporter === 'Resident User #402');
   container.innerHTML = '';
 
   if (userIssues.length === 0) {
@@ -1331,62 +1251,52 @@ function renderProfileIssues() {
     return;
   }
 
-  userIssues.forEach(issue => {
+  userIssues.forEach(ticket => {
     const card = document.createElement('div');
-    card.className = 'sidebar-item';
-    card.style.display = 'flex';
-    card.style.justifyContent = 'space-between';
-    card.style.alignItems = 'center';
+    card.className = 'card';
+    card.style.padding = '16px';
+    card.style.cursor = 'pointer';
     
     card.innerHTML = `
-      <div style="display: flex; gap: 12px; align-items: center;">
-        <div style="width:24px; height:24px; border-radius:50%; border:1.5px solid var(--border-gray); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold; color:var(--text-muted); flex-shrink: 0;">X</div>
-        <div>
-          <h4 style="font-size: 13px; font-weight: 700; text-transform: uppercase;">${issue.title}</h4>
-          <p style="font-size: 11px; color: var(--text-muted);">${issue.location} | Category: ${issue.category}</p>
-          <p style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
-            Tracking Token ID: <span style="font-weight: 700; color: var(--text-primary);">#${issue.id}</span>
-          </p>
-        </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:8px; margin-bottom:8px;">
+        <span style="font-weight:bold; font-family:var(--font-mono); font-size:12px;">#${ticket.id}</span>
+        <span class="status-badge ${get_status_badge_css(ticket.status)}" style="font-size: 8px; min-width:55px; padding:1px 3px;">${ticket.status}</span>
       </div>
-      <div style="text-align: right;">
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">Reported: ${issue.reportedDate}</p>
-        <span class="status-badge ${getStatusBadgeClass(issue.status)}" style="font-size:9px; min-width:70px; padding: 1px 4px;">${issue.status}</span>
+      <h3 style="font-size:13px; font-weight:bold; text-transform:uppercase;">${ticket.title}</h3>
+      <p style="font-size:11px; color:var(--text-muted); margin-top:2px;">Location: ${ticket.location}</p>
+      <p style="font-size:11px; margin-top:6px; color:var(--text-primary); line-height:1.3;">${ticket.description.slice(0, 100)}${ticket.description.length > 100 ? '...' : ''}</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:10px; color:var(--text-muted);">
+        <span>Date: ${ticket.reportedDate}</span>
+        <span>Upvotes: ${ticket.upvotes || 0}</span>
       </div>
     `;
 
     card.addEventListener('click', () => {
-      state.selectedIssueId = issue.id;
-      switchTab('map');
+      fmc_store.focus_ticket_id = ticket.id;
+      toggle_active_tab('map');
     });
 
     container.appendChild(card);
   });
 }
 
-// Render Activity Feed
-function renderActivityFeed() {
+// Populate Live Activity Feed list
+function draw_live_action_feed() {
   const container = document.getElementById('activity-feed-list');
   if (!container) return;
 
   container.innerHTML = '';
 
   let filtered = activityLogs;
-  if (state.activityFilter !== 'all') {
-    filtered = activityLogs.filter(log => log.type === state.activityFilter);
-  }
-
-  if (filtered.length === 0) {
-    container.innerHTML = `<div class="card" style="text-align:center; padding:30px; color:var(--text-muted);">No activity logs in this category.</div>`;
-    return;
+  if (fmc_store.feed_filter !== 'all') {
+    filtered = activityLogs.filter(log => log.type === fmc_store.feed_filter);
   }
 
   filtered.forEach(log => {
-    const card = document.createElement('div');
-    card.className = 'card activity-card';
-    
+    const card = document.createElement('article');
+    card.className = 'activity-card';
+
     let iconHTML = '';
-    
     if (log.type === 'resolved') {
       iconHTML = '<i class="ti ti-check" style="font-weight: bold; color: #4b5563;"></i>';
     } else if (log.type === 'update') {
@@ -1400,22 +1310,25 @@ function renderActivityFeed() {
         ${iconHTML}
       </div>
       <div class="activity-details">
-        <div class="activity-meta">
+        <header class="activity-header">
           <span class="activity-location">${log.location}</span>
-          <span>${log.time}</span>
-        </div>
-        <div class="activity-desc">${log.desc}</div>
-        <span class="activity-log-tag">System Log [${log.tag}]</span>
+          <span class="activity-time">${log.time}</span>
+        </header>
+        <p class="activity-desc">${log.desc}</p>
       </div>
     `;
 
-    const refLink = card.querySelector('.activity-issue-ref');
-    if (refLink) {
+    // Timeline ticket link reference trigger
+    const refLink = card.querySelector('.activity-desc span.font-bold');
+    if (refLink && refLink.textContent.includes('#')) {
+      refLink.style.cursor = 'pointer';
+      refLink.style.textDecoration = 'underline';
+      
       refLink.addEventListener('click', () => {
         const idMatch = refLink.textContent.match(/#(\d+)/);
         if (idMatch && idMatch[1]) {
-          state.selectedIssueId = idMatch[1];
-          switchTab('map');
+          fmc_store.focus_ticket_id = idMatch[1];
+          toggle_active_tab('map');
         }
       });
     }
@@ -1424,54 +1337,52 @@ function renderActivityFeed() {
   });
 }
 
-// Render Map and Map Markers
-function renderMap() {
+// Master map synchronizer
+function refresh_map_views() {
   if (!dashboardMapInstance || !interactiveMapInstance) return;
-  renderMapMarkers();
-  renderTrackingDetails();
+  render_leaflet_pins();
+  render_tracking_detail_card();
 }
 
-// Check if resolved issues are older than 5 days
-function shouldShowMapPin(issue) {
-  if (issue.status !== 'RESOLVED' && issue.status !== 'CLOSED') {
-    return true; // Active or pending issues are always shown
+// Expiration validator logic for resolved pins
+function validate_pin_expiry(ticket) {
+  if (ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED') {
+    return true; // active issues always render
   }
-  // Check if manually forced to show via History option
-  if (state.forcedHistoryPins && state.forcedHistoryPins.includes(issue.id)) {
+  // Check override toggle
+  if (fmc_store.pin_overrides && fmc_store.pin_overrides.includes(ticket.id)) {
     return true;
   }
-  if (!issue.resolvedDate) {
-    return true; // Default fallback if no date is recorded
+  if (!ticket.resolvedDate) {
+    return true; // fallback
   }
-  const resolvedTime = new Date(issue.resolvedDate).getTime();
+  const resolvedTime = new Date(ticket.resolvedDate).getTime();
   const currentTime = new Date().getTime();
   const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
   return diffDays <= 5;
 }
 
-function renderMapMarkers() {
-  // Clear any existing Leaflet markers from instances
+// Render active pins on maps
+function render_leaflet_pins() {
   dashboardMarkers.forEach(m => dashboardMapInstance.removeLayer(m));
   interactiveMarkers.forEach(m => interactiveMapInstance.removeLayer(m));
   
   dashboardMarkers = [];
   interactiveMarkers = [];
 
-  state.issues.forEach(issue => {
-    // Skip placing markers for issues resolved more than 5 days ago
-    if (!shouldShowMapPin(issue)) {
+  fmc_store.tickets.forEach(ticket => {
+    // Hide markers if resolved more than 5 days ago and not overridden
+    if (!validate_pin_expiry(ticket)) {
       return;
     }
 
-    // Determine pin type
     let pinType = 'active-new';
-    if (issue.status === 'IN PROGRESS') pinType = 'in-progress';
-    else if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') pinType = 'resolved';
+    if (ticket.status === 'IN PROGRESS') pinType = 'in-progress';
+    else if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') pinType = 'resolved';
 
-    // Create custom Leaflet divIcon
     const customIcon = L.divIcon({
       className: 'custom-leaflet-marker',
-      html: `<div class="marker-pin ${pinType}"></div><div class="marker-label">#${issue.id}:<br>${issue.title.split(' ')[0]}</div>`,
+      html: `<div class="marker-pin ${pinType}"></div><div class="marker-label">#${ticket.id}:<br>${ticket.title.split(' ')[0]}</div>`,
       iconSize: [40, 48],
       iconAnchor: [7, 7]
     });
@@ -1483,32 +1394,29 @@ function renderMapMarkers() {
       iconAnchor: [7, 7]
     });
 
-    // 1. Place on Interactive Map
     if (interactiveMapInstance) {
-      const marker = L.marker([issue.coordinates.lat, issue.coordinates.lng], { icon: customIcon })
+      const marker = L.marker([ticket.coordinates.lat, ticket.coordinates.lng], { icon: customIcon })
         .addTo(interactiveMapInstance);
       
-      // Bind click selection
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        state.selectedIssueId = issue.id;
-        interactiveMapInstance.setView([issue.coordinates.lat, issue.coordinates.lng], 16);
-        renderTrackingDetails();
+        fmc_store.focus_ticket_id = ticket.id;
+        interactiveMapInstance.setView([ticket.coordinates.lat, ticket.coordinates.lng], 16);
+        render_tracking_detail_card();
       });
 
       interactiveMarkers.push(marker);
     }
 
-    // 2. Place on Dashboard Map
     if (dashboardMapInstance) {
-      const marker = L.marker([issue.coordinates.lat, issue.coordinates.lng], { icon: miniIcon })
+      const marker = L.marker([ticket.coordinates.lat, ticket.coordinates.lng], { icon: miniIcon })
         .addTo(dashboardMapInstance);
       
       dashboardMarkers.push(marker);
     }
   });
 
-  // 3. Place User's Location Marker (if detected/initialized)
+  // User location marker
   if (cityCenter) {
     const userLocationIcon = L.divIcon({
       className: 'custom-leaflet-marker user-location-marker-container',
@@ -1537,23 +1445,23 @@ function renderMapMarkers() {
     }
   }
 
-  // If there's a selected issue, pan the main interactive map to it
-  if (state.activeTab === 'map' && state.selectedIssueId) {
-    const selected = state.issues.find(i => i.id === state.selectedIssueId);
+  // Snap map tab camera to selected ticket
+  if (fmc_store.activeTab === 'map' && fmc_store.focus_ticket_id) {
+    const selected = fmc_store.tickets.find(t => t.id === fmc_store.focus_ticket_id);
     if (selected && interactiveMapInstance) {
       interactiveMapInstance.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
     }
   }
 }
 
-// Render Map Sidebar Tracking Details Panel
-function renderTrackingDetails() {
+// Render tracking detail card in map sidebar
+function render_tracking_detail_card() {
   const panel = document.getElementById('tracking-detail-panel');
   if (!panel) return;
 
-  const issue = state.issues.find(i => i.id === state.selectedIssueId);
+  const ticket = fmc_store.tickets.find(t => t.id === fmc_store.focus_ticket_id);
   
-  if (!issue) {
+  if (!ticket) {
     panel.innerHTML = `
       <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex-grow:1; text-align:center; color:var(--text-muted); padding: 40px 20px;">
         <i class="ti ti-map-pin" style="font-size: 36px; margin-bottom: 12px; color: var(--border-gray);"></i>
@@ -1564,11 +1472,10 @@ function renderTrackingDetails() {
     return;
   }
 
-  // Build timeline steps
   let timelineStepsHTML = '';
-  issue.timeline.forEach((step, index) => {
+  ticket.timeline.forEach((step, index) => {
     const isCompleted = step.complete;
-    const dotClass = isCompleted ? (issue.status === 'IN PROGRESS' && index === 1 ? 'in-progress' : 'complete') : 'pending';
+    const dotClass = isCompleted ? (ticket.status === 'IN PROGRESS' && index === 1 ? 'in-progress' : 'complete') : 'pending';
     const titleClass = isCompleted ? '' : 'pending';
     
     timelineStepsHTML += `
@@ -1583,20 +1490,20 @@ function renderTrackingDetails() {
   });
 
   panel.innerHTML = `
-    <h2 style="font-size: 15px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Tracking Details: ${issue.title}</h2>
+    <h2 style="font-size: 15px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Tracking Details: ${ticket.title}</h2>
     <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 16px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px;">
-      <div><strong>ID:</strong> #${issue.id} | <strong>Location:</strong> ${issue.location}</div>
-      <div style="margin-top: 4px;"><strong>Current Status:</strong> [ <span style="font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.05em;">${issue.status}</span> ] | <strong>Upvotes:</strong> <span id="issue-upvotes-count">${issue.upvotes || 0}</span></div>
-      <div style="margin-top: 4px; font-family: monospace; font-size:10px;"><strong>Lat/Lng:</strong> ${issue.coordinates.lat.toFixed(5)}, ${issue.coordinates.lng.toFixed(5)}</div>
+      <div><strong>ID:</strong> #${ticket.id} | <strong>Location:</strong> ${ticket.location}</div>
+      <div style="margin-top: 4px;"><strong>Current Status:</strong> [ <span style="font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.05em;">${ticket.status}</span> ] | <strong>Upvotes:</strong> <span id="issue-upvotes-count">${ticket.upvotes || 0}</span></div>
+      <div style="margin-top: 4px; font-family: monospace; font-size:10px;"><strong>Lat/Lng:</strong> ${ticket.coordinates.lat.toFixed(5)}, ${ticket.coordinates.lng.toFixed(5)}</div>
     </div>
     
     <div style="font-size: 12px; color: var(--text-primary); line-height: 1.4; margin-bottom: 16px; font-style: italic;">
-      Details: ${issue.description === 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' ? 'No additional description provided.' : issue.description}
+      Details: ${ticket.description === 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' ? 'No additional description provided.' : ticket.description}
     </div>
 
-    ${issue.imageBase64 ? `
+    ${ticket.imageBase64 ? `
       <div style="margin-top: 8px; margin-bottom: 16px; border: 2px solid var(--border-gray); padding: 4px; background: #ffffff;">
-        <img src="${issue.imageBase64}" style="width: 100%; max-height: 160px; object-fit: cover;" alt="Issue Attachment" />
+        <img src="${ticket.imageBase64}" style="width: 100%; max-height: 160px; object-fit: cover;" alt="Issue Attachment" />
       </div>
     ` : ''}
     
@@ -1604,26 +1511,26 @@ function renderTrackingDetails() {
       ${timelineStepsHTML}
     </div>
     
-    ${issue.status !== 'RESOLVED' && issue.status !== 'CLOSED' ? `
+    ${ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED' ? `
       <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
-        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${state.upvotedIssues.includes(issue.id) ? 'disabled' : ''}>
-          ${state.upvotedIssues.includes(issue.id) ? 'Upvoted' : 'Upvote'}
+        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${fmc_store.upvoted_registry.includes(ticket.id) ? 'disabled' : ''}>
+          ${fmc_store.upvoted_registry.includes(ticket.id) ? 'Upvoted' : 'Upvote'}
         </button>
         <button class="btn btn-primary" id="btn-resolve-issue-mock" style="flex:1;">
           Resolve
         </button>
       </div>
     ` : (() => {
-      const isResolvedOrClosed = issue.status === 'RESOLVED' || issue.status === 'CLOSED';
+      const isResolvedOrClosed = ticket.status === 'RESOLVED' || ticket.status === 'CLOSED';
       let isOlderThan5Days = false;
-      if (isResolvedOrClosed && issue.resolvedDate) {
-        const resolvedTime = new Date(issue.resolvedDate).getTime();
+      if (isResolvedOrClosed && ticket.resolvedDate) {
+        const resolvedTime = new Date(ticket.resolvedDate).getTime();
         const currentTime = new Date().getTime();
         const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
         isOlderThan5Days = diffDays > 5;
       }
       if (isOlderThan5Days) {
-        const hasPin = state.forcedHistoryPins && state.forcedHistoryPins.includes(issue.id);
+        const hasPin = fmc_store.pin_overrides && fmc_store.pin_overrides.includes(ticket.id);
         return `
           <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
             <button class="btn ${hasPin ? 'btn-secondary' : 'btn-primary'}" id="btn-toggle-history-pin" style="flex:1;">
@@ -1636,60 +1543,54 @@ function renderTrackingDetails() {
     })()}
   `;
 
-  // Bind mock actions inside panel
+  // Bind panel button actions
   const upvoteBtn = document.getElementById('btn-upvote-issue');
   if (upvoteBtn) {
     upvoteBtn.addEventListener('click', () => {
-      // Increment upvote count in state
-      issue.upvotes = (issue.upvotes || 0) + 1;
+      ticket.upvotes = (ticket.upvotes || 0) + 1;
       
-      // Update count on UI
       const countEl = document.getElementById('issue-upvotes-count');
-      if (countEl) countEl.textContent = issue.upvotes;
+      if (countEl) countEl.textContent = ticket.upvotes;
       
-      // Disable button
       upvoteBtn.disabled = true;
       upvoteBtn.textContent = 'Upvoted';
 
-      // Track upvoted issue ID
-      if (!state.upvotedIssues.includes(issue.id)) {
-        state.upvotedIssues.push(issue.id);
-        localStorage.setItem('community_upvoted_issues', JSON.stringify(state.upvotedIssues));
+      if (!fmc_store.upvoted_registry.includes(ticket.id)) {
+        fmc_store.upvoted_registry.push(ticket.id);
+        localStorage.setItem('community_upvoted_issues', JSON.stringify(fmc_store.upvoted_registry));
       }
 
-      // Persist the increment
-      const customIdx = customIssues.findIndex(i => i.id === issue.id);
+      const customIdx = customIssues.findIndex(i => i.id === ticket.id);
       if (customIdx !== -1) {
-        customIssues[customIdx].upvotes = issue.upvotes;
+        customIssues[customIdx].upvotes = ticket.upvotes;
         localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
       } else {
         const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
-        defaultIssuesUpvotes[issue.id] = (defaultIssuesUpvotes[issue.id] || 0) + 1;
+        defaultIssuesUpvotes[ticket.id] = (defaultIssuesUpvotes[ticket.id] || 0) + 1;
         localStorage.setItem('community_default_issues_upvotes', JSON.stringify(defaultIssuesUpvotes));
       }
 
       const newLog = {
         id: `log-${Date.now()}`,
-        location: issue.location,
+        location: ticket.location,
         time: 'JUST NOW',
-        desc: `Community upvote recorded for <span class="font-bold">Issue #${issue.id} (${issue.title})</span>. Total upvotes: <span class="font-bold">${issue.upvotes}</span>.`,
+        desc: `Community upvote recorded for <span class="font-bold">Issue #${ticket.id} (${ticket.title})</span>. Total upvotes: <span class="font-bold">${ticket.upvotes}</span>.`,
         tag: 'UPDATE',
         type: 'update'
       };
       activityLogs.unshift(newLog);
       customLogs.unshift(newLog);
       localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
-      renderApp();
+      sync_ui_elements();
     });
   }
 
   const resolveBtn = document.getElementById('btn-resolve-issue-mock');
   if (resolveBtn) {
     resolveBtn.addEventListener('click', () => {
-      // Mock Resolve issue
-      issue.status = 'RESOLVED';
-      issue.resolvedDate = new Date().toISOString();
-      issue.timeline.push({
+      ticket.status = 'RESOLVED';
+      ticket.resolvedDate = new Date().toISOString();
+      ticket.timeline.push({
         title: 'Resolved Verification: marked fixed',
         time: 'Just now',
         complete: true
@@ -1697,45 +1598,44 @@ function renderTrackingDetails() {
       
       const newLog = {
         id: `log-${Date.now()}`,
-        location: issue.location,
+        location: ticket.location,
         time: 'JUST NOW',
-        desc: `Municipal Maintenance Team marked <span class="font-bold">Issue #${issue.id} (${issue.title})</span> as <span class="font-bold">RESOLVED</span>. Verification: marked fixed.`,
+        desc: `Municipal Maintenance Team marked <span class="font-bold">Issue #${ticket.id} (${ticket.title})</span> as <span class="font-bold">RESOLVED</span>. Verification: marked fixed.`,
         tag: 'RESOLVED',
         type: 'resolved'
       };
       activityLogs.unshift(newLog);
 
-      // Persist status change in customIssues
-      const customIdx = customIssues.findIndex(i => i.id === issue.id);
+      const customIdx = customIssues.findIndex(i => i.id === ticket.id);
       if (customIdx !== -1) {
         customIssues[customIdx].status = 'RESOLVED';
-        customIssues[customIdx].resolvedDate = issue.resolvedDate;
-        customIssues[customIdx].timeline = issue.timeline;
+        customIssues[customIdx].resolvedDate = ticket.resolvedDate;
+        customIssues[customIdx].timeline = ticket.timeline;
         localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
       }
 
       customLogs.unshift(newLog);
       localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
 
-      renderApp();
+      sync_ui_elements();
     });
   }
 
   const toggleHistoryPinBtn = document.getElementById('btn-toggle-history-pin');
   if (toggleHistoryPinBtn) {
     toggleHistoryPinBtn.addEventListener('click', () => {
-      if (!state.forcedHistoryPins) {
-        state.forcedHistoryPins = [];
+      if (!fmc_store.pin_overrides) {
+        fmc_store.pin_overrides = [];
       }
-      const idx = state.forcedHistoryPins.indexOf(issue.id);
+      const idx = fmc_store.pin_overrides.indexOf(ticket.id);
       if (idx === -1) {
-        state.forcedHistoryPins.push(issue.id);
+        fmc_store.pin_overrides.push(ticket.id);
       } else {
-        state.forcedHistoryPins.splice(idx, 1);
+        fmc_store.pin_overrides.splice(idx, 1);
       }
-      localStorage.setItem('community_forced_history_pins', JSON.stringify(state.forcedHistoryPins));
-      renderMapMarkers();
-      renderTrackingDetails();
+      localStorage.setItem('community_forced_history_pins', JSON.stringify(fmc_store.pin_overrides));
+      render_leaflet_pins();
+      render_tracking_detail_card();
     });
   }
 }
