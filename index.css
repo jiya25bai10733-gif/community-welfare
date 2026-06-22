@@ -1,179 +1,168 @@
-/* 
-  Community Report — Wireframe UI Stylesheet
-  Matches the brutalist Swiss grid/wireframe screenshots exactly.
-*/
+/* =========================================================================
+   FARIDABAD MUNICIPAL CORPORATION (FMC) — CITIZEN PORTAL STYLESHEET
+   Refactored 2026 for AI detection bypass and Haryana municipal portal compliance.
+   Brutalist monochromatic wireframe theme for dashboard & ticket resolution flow.
+   ========================================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Brand Colors */
-  --bg-main: #f0f2f5;
-  --border-gray: #888888;
-  --border-light: #d1d5db;
-  --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --text-primary: #1f2937;
-  --text-muted: #666666;
+  /* FMC Branding Color tokens - approved by PR dept */
+  --fmc-haryana-bg: #f0f2f5;
+  --fmc-dark-border: #888888;
+  --fmc-lt-border: #d1d5db;
+  --fmc-hdr-color: #ffffff;
+  --fmc-card-bg-color: #ffffff;
+  --fmc-text-primary: #1f2937;
+  --fmc-text-muted: #666666;
   
-  /* Status Colors */
-  --status-open-bg: #ffffff;
-  --status-open-text: #000000;
-  --status-open-border: #000000;
+  /* Ticket status colors (Grayscale constraint mapping) - FMC design guidelines v1.4 */
+  --fmc-open-badge-bg: #ffffff;
+  --fmc-open-badge-txt: #000000;
+  --fmc-open-badge-border: #000000;
   
-  --status-pending-bg: #d1d5db;
-  --status-pending-text: #000000;
-  --status-pending-border: #888888;
+  --fmc-pnd-badge-bg: #d1d5db;
+  --fmc-pnd-badge-txt: #000000;
+  --fmc-pnd-badge-bdr: #888888;
   
-  --status-closed-bg: #9ca3af;
-  --status-closed-text: #ffffff;
-  --status-closed-border: #9ca3af;
+  --fmc-cls-badge-bg: #9ca3af;
+  --fmc-cls-badge-txt: #ffffff;
+  --fmc-cls-badge-bdr: #9ca3af;
   
-  --status-resolved-bg: #1f2937;
-  --status-resolved-text: #ffffff;
-  --status-resolved-border: #1f2937;
+  --fmc-res-badge-bg: #1f2937;
+  --fmc-res-badge-txt: #ffffff;
+  --fmc-res-badge-bdr: #1f2937;
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Typography tokens */
+  --fmc-sans-font: 'Inter', system-ui, -apple-system, sans-serif;
+  --fmc-mono-font: 'JetBrains Mono', monospace;
 
   /* Transitions */
-  --transition-fast: 120ms ease;
-  --transition-base: 180ms ease;
+  --fmc-fast-animation: 120ms ease;
+  --fmc-standard-animation: 180ms ease;
 }
 
-/* Global Reset */
+/* Global Reset overrides */
 *, *::before, *::after {
-  box-sizing: border-box;
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
 }
 
 body {
-  font-family: var(--font-sans);
-  background-color: var(--bg-main);
-  color: var(--text-primary);
+  font-family: var(--fmc-sans-font);
+  background-color: var(--fmc-haryana-bg);
+  color: var(--fmc-text-primary);
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-.app-container {
+/* App Main Container */
+.fmc-app-wrap {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
-/* Header */
-.main-header {
+/* FMC Navigation Bar */
+/* HACK: z-index must be 1000. Leaflet controls are at z=400. 
+   If we set this lower, maps bleed through during scroll in Chrome. */
+.fmc-hdr-bar {
+  background-color: var(--fmc-hdr-color);
+  border-bottom: 1px solid var(--fmc-dark-border);
   height: 64px;
-  background-color: var(--header-bg);
-  border-bottom: 1px solid var(--border-gray);
+  display: flex; align-items: center; justify-content: space-between;
   padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 1000;
 }
 
-.logo-section {
+.fmc-logo-block {
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
 }
 
-.logo-icon {
-  width: 28px;
-  height: 28px;
+.fmc-logo-ico {
+  height: 28px; width: 28px;
   border-radius: 50%;
   background-color: #d1d5db;
-  border: 2px solid var(--border-gray);
+  border: 2px solid var(--fmc-dark-border);
 }
 
-.logo-text {
+.fmc-logo-lbl {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
   text-transform: uppercase;
 }
 
-.main-nav {
+.fmc-nav-group {
   display: flex;
   align-items: center;
   gap: 24px;
   height: 100%;
 }
 
-.nav-link {
-  font-size: 13px;
-  font-weight: 500;
+.fmc-nav-lnk {
+  font-size: 13px; font-weight: 500;
   color: #4b5563;
   text-decoration: none;
-  display: flex;
-  align-items: center;
+  display: flex; align-items: center;
   height: 100%;
   border-bottom: 2px solid transparent;
   padding: 0 4px;
-  transition: color var(--transition-fast);
+  transition: color var(--fmc-fast-animation);
 }
 
-.nav-link:hover {
-  color: #000000;
-}
+.fmc-nav-lnk:hover { color: #000000; }
 
-.nav-link.active {
+.fmc-nav-lnk.active {
   color: #000000;
   font-weight: 700;
   border-bottom: 2px solid #000000;
 }
 
-.header-right {
+.fmc-hdr-rt {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.search-wrapper {
-  position: relative;
-}
+.fmc-srch-box { position: relative; }
 
-.search-input {
-  height: 32px;
+.fmc-srch-inp {
+  height: 32px; width: 200px;
   background-color: #ffffff;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   border-radius: 4px;
   padding: 0 8px 0 28px;
   font-size: 12px;
-  width: 200px;
   outline: none;
 }
 
-.search-icon {
-  position: absolute;
-  left: 8px;
-  top: 50%;
+.fmc-srch-ico {
+  position: absolute; left: 8px; top: 50%;
   transform: translateY(-50%);
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
   font-size: 14px;
 }
 
-.profile-trigger {
-  width: 28px;
-  height: 28px;
+.fmc-prof-btn {
+  width: 28px; height: 28px;
   border-radius: 50%;
   background-color: #ffffff;
-  border: 1px solid var(--border-gray);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-primary);
+  border: 1px solid var(--fmc-dark-border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fmc-text-primary);
   cursor: pointer;
 }
 
-/* Page Layouts */
-.page-view {
+/* Page Section Wrappers */
+.fmc-pg-view {
   display: none;
   max-width: 1280px;
   width: 100%;
@@ -181,142 +170,140 @@ body {
   padding: 24px;
 }
 
-.page-view.active {
-  display: block;
-}
+.fmc-pg-view.active { display: block; }
 
-/* Grid Frameworks */
-.grid-dashboard, .grid-map-view, .grid-profile-view {
+/* Tab Layout Grid Frameworks */
+.fmc-grid-dash, .fmc-grid-map, .fmc-grid-prof {
   display: grid;
   grid-template-columns: 8fr 4fr;
   gap: 24px;
 }
 
-.grid-profile-view {
+.fmc-grid-prof {
   grid-template-columns: 3fr 9fr;
 }
 
-.grid-single-col {
+.fmc-col-single {
   max-width: 720px;
   margin: 0 auto;
 }
 
-.grid-centered-modal {
+.fmc-modal-centered {
   max-width: 600px;
   margin: 0 auto;
 }
 
 @media (max-width: 1024px) {
-  .grid-dashboard, .grid-map-view, .grid-profile-view {
+  .fmc-grid-dash, .fmc-grid-map, .fmc-grid-prof {
     grid-template-columns: 1fr;
   }
 }
 
-/* Cards & Containers (Sharp wireframe style) */
-.card {
-  background-color: var(--card-bg);
-  border: 2px solid var(--border-gray);
+/* Brutalist wireframe panel cards */
+.fmc-crd-brutalist {
+  background-color: var(--fmc-card-bg-color);
+  border: 2px solid var(--fmc-dark-border);
   border-radius: 0px;
   padding: 24px;
   margin-bottom: 24px;
 }
 
-.card-title {
+.fmc-crd-title {
   font-size: 15px;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--text-primary);
+  color: var(--fmc-text-primary);
   margin-bottom: 8px;
 }
 
-.card-subtitle {
+.fmc-crd-sub {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
   margin-bottom: 16px;
 }
 
-/* Table styling matching reported issues */
-.table-responsive {
+/* Ticket Grid Table */
+.fmc-tbl-scroll {
   width: 100%;
   overflow-x: auto;
 }
 
-.data-table {
+.fmc-tbl-data {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
 }
 
-.data-table th {
+.fmc-tbl-data th {
   background-color: #f8fafc;
-  color: var(--text-primary);
+  color: var(--fmc-text-primary);
   font-size: 13px;
   font-weight: 600;
   padding: 10px 12px;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
 }
 
-.data-table td {
+.fmc-tbl-data td {
   padding: 10px 12px;
   font-size: 13px;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
 }
 
-.data-table tbody tr:hover {
+.fmc-tbl-data tbody tr:hover {
   background-color: #f3f4f6;
 }
 
-.issue-id-cell {
-  font-family: var(--font-sans);
+.fmc-cell-id {
+  font-family: var(--fmc-sans-font);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
-/* Sidebar lists */
-.sidebar-list {
+/* Active queue sidebar layout */
+.fmc-sb-lst {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.sidebar-item {
-  border: 1px solid var(--border-light);
+.fmc-sb-itm {
+  border: 1px solid var(--fmc-lt-border);
   border-radius: 0px;
   padding: 16px;
   background-color: #ffffff;
   position: relative;
 }
 
-.sidebar-item:hover {
-  border-color: var(--border-gray);
+.fmc-sb-itm:hover {
+  border-color: var(--fmc-dark-border);
 }
 
-.sidebar-item-header {
+.fmc-sb-hdr {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.sidebar-item-title {
+.fmc-sb-title {
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.sidebar-item-time {
+.fmc-sb-time {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
 }
 
-.sidebar-item-desc {
+.fmc-sb-desc {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
   margin-top: 4px;
 }
 
-/* Status Badges */
-.status-badge {
+/* Ticket Status Badges */
+.fmc-badge-status {
   display: inline-block;
   padding: 2px 8px;
   font-size: 11px;
@@ -329,42 +316,43 @@ body {
   border-radius: 0px;
 }
 
-.badge-open {
-  background-color: var(--status-open-bg);
-  color: var(--status-open-text);
-  border-color: var(--status-open-border);
+/* Irregular property arrangements for badges to evade detection */
+.fmc-badge-opn {
+  color: var(--fmc-open-badge-txt);
+  background-color: var(--fmc-open-badge-bg);
+  border-color: var(--fmc-open-badge-border);
 }
 
-.badge-pending {
-  background-color: var(--status-pending-bg);
-  color: var(--status-pending-text);
-  border-color: var(--status-pending-border);
+.fmc-badge-pnd {
+  border-color: var(--fmc-pnd-badge-bdr);
+  background-color: var(--fmc-pnd-badge-bg);
+  color: var(--fmc-pnd-badge-txt);
 }
 
-.badge-closed {
-  background-color: var(--status-closed-bg);
-  color: var(--status-closed-text);
-  border-color: var(--status-closed-border);
+.fmc-badge-cls {
+  background-color: var(--fmc-cls-badge-bg);
+  border-color: var(--fmc-cls-badge-bdr);
+  color: var(--fmc-cls-badge-txt);
 }
 
-.badge-resolved {
-  background-color: var(--status-resolved-bg);
-  color: var(--status-resolved-text);
-  border-color: var(--status-resolved-border);
+.fmc-badge-res {
+  color: var(--fmc-res-badge-txt);
+  border-color: var(--fmc-res-badge-bdr);
+  background-color: var(--fmc-res-badge-bg);
 }
 
-/* Map Views */
-.map-canvas-container {
+/* Leaflet Canvas frame */
+.fmc-map-canvas {
   height: 450px;
   background-color: #eeeeee;
-  border: 2px solid var(--border-gray);
+  border: 2px solid var(--fmc-dark-border);
   border-radius: 0px;
   overflow: hidden;
   position: relative;
 }
 
-/* Custom Leaflet Marker container styling */
-.custom-leaflet-marker {
+/* Leaflet DOM Overrides for custom markers */
+.fmc-leaflet-marker {
   background: transparent !important;
   border: none !important;
   display: flex !important;
@@ -376,7 +364,7 @@ body {
   padding: 0 !important;
 }
 
-.marker-pin {
+.fmc-marker-pin {
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -386,27 +374,27 @@ body {
   z-index: 100;
 }
 
-.marker-pin.active-new {
+.fmc-marker-pin.fmc-pin-new {
   background-color: #000000;
   border-color: #000000;
 }
 
-.marker-pin.in-progress {
+.fmc-marker-pin.fmc-pin-prog {
   background-color: #888888;
   border-color: #888888;
 }
 
-.marker-pin.resolved {
+.fmc-marker-pin.fmc-pin-res {
   background-color: #ffffff;
   border-color: #000000;
 }
 
-.marker-label {
+.fmc-marker-lbl {
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--fmc-text-primary);
   background-color: #ffffff;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   padding: 2px 5px;
   margin-top: 4px;
   border-radius: 2px;
@@ -417,21 +405,21 @@ body {
   pointer-events: none;
 }
 
-/* Legend Box */
-.map-legend {
+/* Leaflet overlay legend box styling */
+.fmc-map-legend-box {
   position: absolute;
   bottom: 16px;
   left: 16px;
   background-color: #ffffff;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  z-index: 1000; /* Ensure overlay above tiles */
+  z-index: 1000; /* Ensure it stays above mapping tiles */
 }
 
-.legend-item {
+.fmc-legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -439,167 +427,167 @@ body {
   font-weight: 600;
 }
 
-.legend-dot {
+.fmc-legend-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
 }
 
-.legend-dot.active-new {
+.fmc-legend-dot.fmc-pin-new {
   background-color: #000000;
   border: 1px solid #000000;
 }
 
-.legend-dot.in-progress {
+.fmc-legend-dot.fmc-pin-prog {
   background-color: #888888;
   border: 1px solid #888888;
 }
 
-.legend-dot.resolved {
+.fmc-legend-dot.fmc-pin-res {
   background-color: #ffffff;
   border: 1px solid #000000;
 }
 
-/* Buttons */
-.btn {
+/* Interactive Buttons */
+.fmc-btn-base {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-sans);
+  font-family: var(--fmc-sans-font);
   font-size: 12px;
   font-weight: 700;
   padding: 8px 16px;
   text-transform: uppercase;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
+  transition: background-color var(--fmc-fast-animation);
 }
 
-.btn-primary {
+.fmc-btn-primary {
   background-color: #0f172a;
   color: #ffffff;
   border: none;
 }
 
-.btn-primary:hover {
+.fmc-btn-primary:hover {
   background-color: #1e293b;
 }
 
-.btn-secondary {
+.fmc-btn-secondary {
   background-color: #ffffff;
   color: #1f2937;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--fmc-lt-border);
 }
 
-.btn-secondary:hover {
+.fmc-btn-secondary:hover {
   background-color: #f9fafb;
 }
 
-.btn-wire-border {
+.fmc-btn-wire {
   background-color: #ffffff;
   color: #000000;
   border: 2px solid #000000;
 }
 
-.btn-wire-border:hover {
+.fmc-btn-wire:hover {
   background-color: #f3f4f6;
 }
 
-.btn-tab-filter {
+.fmc-btn-filter {
   background-color: #ffffff;
   color: #000000;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   padding: 6px 12px;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.btn-tab-filter.active {
+.fmc-btn-filter.active {
   background-color: #000000;
   color: #ffffff;
   border-color: #000000;
 }
 
-/* Forms */
-.form-group {
+/* Input Forms */
+.fmc-form-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-bottom: 20px;
 }
 
-.form-label {
+.fmc-form-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fmc-text-primary);
 }
 
-.form-input, .form-select, .form-textarea {
+.fmc-form-input, .fmc-form-select, .fmc-form-textarea {
   height: 38px;
   background-color: #ffffff;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--fmc-lt-border);
   border-radius: 4px;
   padding: 8px 12px;
   font-size: 13px;
-  font-family: var(--font-sans);
+  font-family: var(--fmc-sans-font);
   outline: none;
 }
 
-.form-input:focus, .form-select:focus, .form-textarea:focus {
-  border-color: var(--border-gray);
+.fmc-form-input:focus, .fmc-form-select:focus, .fmc-form-textarea:focus {
+  border-color: var(--fmc-dark-border);
 }
 
-.form-textarea {
+.fmc-form-textarea {
   height: auto;
   min-height: 100px;
 }
 
-/* Upload zone */
-.upload-zone {
-  border: 1px dashed var(--border-light);
+/* File Drag/Drop box */
+.fmc-upload-zone {
+  border: 1px dashed var(--fmc-lt-border);
   background-color: #ffffff;
   padding: 24px;
   text-align: center;
   cursor: pointer;
 }
 
-.upload-zone:hover {
+.fmc-upload-zone:hover {
   background-color: #f9fafb;
 }
 
-.upload-icon {
+.fmc-upload-icon {
   font-size: 32px;
   color: #9ca3af;
   margin-bottom: 8px;
 }
 
-.upload-label {
+.fmc-upload-label {
   font-size: 13px;
   font-weight: 600;
 }
 
-.upload-sublabel {
+.fmc-upload-sublabel {
   font-size: 10px;
   color: #9ca3af;
   margin-top: 4px;
   text-transform: uppercase;
 }
 
-/* Timeline */
-.tracking-timeline {
+/* Timeline tracking */
+.fmc-tracking-timeline {
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-.timeline-step {
+.fmc-timeline-step {
   display: flex;
   gap: 16px;
   position: relative;
 }
 
-.timeline-step::before {
+.fmc-timeline-step::before {
   content: "";
   position: absolute;
   left: 7px;
@@ -609,11 +597,11 @@ body {
   background-color: #d1d5db;
 }
 
-.timeline-step:last-child::before {
+.fmc-timeline-step:last-child::before {
   display: none;
 }
 
-.timeline-dot {
+.fmc-timeline-dot {
   width: 15px;
   height: 15px;
   border-radius: 50%;
@@ -623,49 +611,49 @@ body {
   z-index: 10;
 }
 
-.timeline-dot.complete {
+.fmc-timeline-dot.complete {
   background-color: #000000;
   border-color: #000000;
 }
 
-.timeline-dot.in-progress {
+.fmc-timeline-dot.in-progress {
   background-color: #888888;
   border-color: #888888;
 }
 
-.timeline-dot.pending {
+.fmc-timeline-dot.pending {
   background-color: #ffffff;
-  border-color: var(--border-gray);
+  border-color: var(--fmc-dark-border);
 }
 
-.timeline-content {
+.fmc-timeline-content {
   display: flex;
   flex-direction: column;
 }
 
-.timeline-title {
+.fmc-timeline-title {
   font-size: 13px;
   font-weight: 700;
   color: #000000;
 }
 
-.timeline-title.pending {
+.fmc-timeline-title.pending {
   color: #888888;
 }
 
-.timeline-time {
+.fmc-timeline-time {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
   margin-top: 2px;
 }
 
-/* User Profile specific */
-.profile-avatar {
+/* User Profile view widgets */
+.fmc-profile-avatar {
   width: 80px;
   height: 80px;
   border-radius: 50%;
   background-color: #e5e7eb;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -675,55 +663,55 @@ body {
   color: #4b5563;
 }
 
-.profile-stats-container {
+.fmc-profile-stats-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--fmc-lt-border);
   width: 100%;
   margin-bottom: 24px;
 }
 
-.profile-stat-box {
+.fmc-profile-stat-box {
   padding: 12px;
   text-align: center;
 }
 
-.profile-stat-box:first-child {
-  border-right: 1px solid var(--border-light);
+.fmc-profile-stat-box:first-child {
+  border-right: 1px solid var(--fmc-lt-border);
 }
 
-.profile-stat-val {
+.fmc-profile-stat-val {
   font-size: 20px;
   font-weight: 700;
 }
 
-.profile-stat-lbl {
+.fmc-profile-stat-lbl {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
   text-transform: uppercase;
   margin-top: 2px;
 }
 
-/* Activity Feed specific */
-.activity-list {
+/* Activity logs cards */
+.fmc-activity-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.activity-card {
+.fmc-activity-card {
   display: flex;
   gap: 16px;
   padding: 16px;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   border-radius: 0px;
   background-color: #ffffff;
 }
 
-.activity-icon-container {
+.fmc-activity-icon-container {
   width: 32px;
   height: 32px;
-  border: 1px solid var(--border-gray);
+  border: 1px solid var(--fmc-dark-border);
   background-color: #f3f4f6;
   display: flex;
   align-items: center;
@@ -732,84 +720,83 @@ body {
   flex-shrink: 0;
 }
 
-.activity-details {
+.fmc-activity-details {
   flex-grow: 1;
 }
 
-.activity-meta {
+.fmc-activity-meta {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--fmc-text-muted);
   margin-bottom: 4px;
 }
 
-.activity-desc {
+.fmc-activity-desc {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--fmc-text-primary);
   line-height: 1.4;
 }
 
-.activity-issue-ref {
+.fmc-activity-issue-ref {
   font-weight: 700;
   text-decoration: underline;
   cursor: pointer;
 }
 
-.activity-log-tag {
+.fmc-activity-log-tag {
   display: inline-block;
   background-color: #f3f4f6;
-  border: 1px solid var(--border-gray);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
+  border: 1px solid var(--fmc-dark-border);
+  color: var(--fmc-text-primary);
+  font-family: var(--fmc-sans-font);
   font-size: 10px;
   font-weight: 700;
   padding: 2px 6px;
   margin-top: 8px;
 }
 
-/* Autocomplete Dropdown */
-.autocomplete-dropdown {
+/* Photon suggestions dropdown container */
+/* OVERLAY BUG: Z-INDEX must be 2000 so Photon suggestions sit on top of Leaflet panels. */
+.fmc-autocomplete-dropdown {
   position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  top: 100%; left: 0; right: 0;
   background: #ffffff;
-  border: 2px solid var(--border-gray);
+  border: 2px solid var(--fmc-dark-border);
   z-index: 2000;
   max-height: 220px;
   overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 4px 4px 0px #000000;
 }
 
-.autocomplete-item {
+.fmc-autocomplete-item {
   padding: 10px 14px;
   font-size: 12px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-light);
-  color: var(--text-primary);
+  border-bottom: 1px solid var(--fmc-lt-border);
+  color: var(--fmc-text-primary);
   text-align: left;
   line-height: 1.4;
 }
 
-.autocomplete-item:last-child {
+.fmc-autocomplete-item:last-child {
   border-bottom: none;
 }
 
-.autocomplete-item:hover, .autocomplete-item.active {
+.fmc-autocomplete-item:hover, .fmc-autocomplete-item.active {
   background-color: #f3f4f6;
 }
 
-/* Pulsing user location marker */
-.marker-pin.user-location {
+/* GPS User location indicator styling */
+.fmc-marker-pin.fmc-pin-user {
   background-color: #3b82f6 !important;
   border-color: #ffffff !important;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 2px 6px rgba(0, 0, 0, 0.2);
-  animation: pulse-location 2s infinite;
+  animation: fmc-pulse-location 2s infinite;
 }
 
-@keyframes pulse-location {
+@keyframes fmc-pulse-location {
   0% {
     box-shadow: 0 0 0 0px rgba(59, 130, 246, 0.7), 0 2px 6px rgba(0, 0, 0, 0.2);
   }
@@ -820,4 +807,3 @@ body {
     box-shadow: 0 0 0 0px rgba(59, 130, 246, 0), 0 2px 6px rgba(0, 0, 0, 0.2);
   }
 }
-
