@@ -380,7 +380,7 @@ function draw_typeahead_options(features, inputEl, dropdownEl) {
     if (!labelText) return;
 
     const div = document.createElement('div');
-    div.className = 'autocomplete-item';
+    div.className = 'suggestionRowItem';
     div.textContent = labelText;
     
     div.addEventListener('click', () => {
@@ -621,34 +621,34 @@ function place_draft_marker(lat, lng, showToast = false, panMap = true) {
 }
 
 // Navigation Tabs Manager
-function init_tab_navigation() {
-  const triggers = document.querySelectorAll('.lnk_nav');
+function init_tabs() {
+  const triggers = document.querySelectorAll('.navItemLink');
   triggers.forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       const target = link.getAttribute('data-target');
-      switchTab(target);
+      toggle_active_tab(target);
     });
   });
 
   const logoTrigger = document.getElementById('logo-trigger');
   if (logoTrigger) {
     logoTrigger.addEventListener('click', () => {
-      switchTab('dashboard');
+      toggle_active_tab('dashboard');
     });
   }
 
   const profileBtn = document.getElementById('profile-btn');
   if (profileBtn) {
     profileBtn.addEventListener('click', () => {
-      switchTab('profile');
+      toggle_active_tab('profile');
     });
   }
 
   const reportRedirect = document.getElementById('btn-report-redirect');
   if (reportRedirect) {
     reportRedirect.addEventListener('click', () => {
-      switchTab('report');
+      toggle_active_tab('report');
     });
   }
 }
@@ -657,7 +657,7 @@ function init_tab_navigation() {
 function toggle_active_tab(targetTabId) {
   fmc_store.activeTab = targetTabId;
 
-  const links = document.querySelectorAll('.lnk_nav');
+  const links = document.querySelectorAll('.navItemLink');
   links.forEach(l => {
     if (l.getAttribute('data-target') === targetTabId) {
       l.classList.add('active');
@@ -666,7 +666,7 @@ function toggle_active_tab(targetTabId) {
     }
   });
 
-  const pages = document.querySelectorAll('.view-panel');
+  const pages = document.querySelectorAll('.viewTabPanel');
   pages.forEach(p => {
     if (p.getAttribute('id') === `view-${targetTabId}`) {
       p.classList.add('active');
@@ -914,7 +914,7 @@ function init_filter_controls() {
       searchDropdown.innerHTML = '';
       matches.forEach(ticket => {
         const item = document.createElement('div');
-        item.className = 'autocomplete-item';
+        item.className = 'suggestionRowItem';
         item.style.padding = '8px 12px';
         item.style.cursor = 'pointer';
         item.style.borderBottom = '1px solid #d1d5db';
@@ -1014,7 +1014,7 @@ function init_filter_controls() {
     });
   }
 
-  const activityTabs = document.querySelectorAll('#view-activity .btn-tab-filter');
+  const activityTabs = document.querySelectorAll('#view-activity .btnTabFilter');
   activityTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       activityTabs.forEach(t => t.classList.remove('active'));
@@ -1067,12 +1067,12 @@ function recalculate_dashboard_metrics() {
 // CSS Badges color mapper
 function get_status_badge_css(status) {
   switch (status) {
-    case 'OPEN': return 'badge-open';
+    case 'OPEN': return 'openBadgeState';
     case 'PENDING':
-    case 'IN PROGRESS': return 'badge-pending';
-    case 'CLOSED': return 'badge-closed';
-    case 'RESOLVED': return 'badge-resolved';
-    default: return 'badge-open';
+    case 'IN PROGRESS': return 'pendingBadgeState';
+    case 'CLOSED': return 'closedBadgeState';
+    case 'RESOLVED': return 'resolvedBadgeState';
+    default: return 'openBadgeState';
   }
 }
 
@@ -1139,15 +1139,15 @@ function populate_ticket_grid() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="issue-id-cell" data-id="${ticket.id}">#${ticket.id}</td>
+      <td class="cellTicketId" data-id="${ticket.id}">#${ticket.id}</td>
       <td>${ticket.title} - ${ticket.description}</td>
       <td>${ticket.location}</td>
       <td>${ticket.category}</td>
       <td>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="status-badge ${get_status_badge_css(ticket.status)}">${ticket.status}</span>
+          <span class="badgeStatusIndicator ${get_status_badge_css(ticket.status)}">${ticket.status}</span>
           ${isOlderThan5Days ? `
-            <button class="btn-toggle-table-pin" data-id="${ticket.id}" style="background: #ffffff; border: 1.5px solid #888888; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
+            <button class="btnPinToggle" data-id="${ticket.id}" style="background: #ffffff; border: 1.5px solid #888888; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
               <i class="ti ${hasPin ? 'ti-map-pin-off' : 'ti-map-pin'}" style="font-size: 10px; color: #000000; font-weight: bold;"></i>
             </button>
           ` : ''}
@@ -1156,7 +1156,7 @@ function populate_ticket_grid() {
     `;
 
     // Click ticket ID cell to load in map tab
-    const cell = tr.querySelector('.issue-id-cell');
+    const cell = tr.querySelector('.cellTicketId');
     if (cell) {
       cell.addEventListener('click', () => {
         fmc_store.focus_ticket_id = ticket.id;
@@ -1166,7 +1166,7 @@ function populate_ticket_grid() {
 
     // Toggle Pin button next to status badges
     if (isOlderThan5Days) {
-      const pinBtn = tr.querySelector('.btn-toggle-table-pin');
+      const pinBtn = tr.querySelector('.btnPinToggle');
       if (pinBtn) {
         pinBtn.addEventListener('click', (e) => {
           e.stopPropagation(); // Avoid triggering cell click redirection
@@ -1207,21 +1207,21 @@ function draw_active_ticket_queue() {
     activeCount++;
 
     const item = document.createElement('div');
-    item.className = 'sidebar-item';
+    item.className = 'sideQueueItem';
     
     item.innerHTML = `
-      <div class="sidebar-item-header">
+      <div class="sideItemHeader">
         <div style="display:flex; align-items:center; gap:8px;">
           <div style="width:16px; height:16px; border-radius:50%; border:1.5px solid #888888; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; color:#666666;">X</div>
-          <span class="sidebar-item-title">${ticket.title}</span>
+          <span class="sideItemTitle">${ticket.title}</span>
         </div>
-        <span class="sidebar-item-time">${ticket.reportedTime}</span>
+        <span class="sideItemTime">${ticket.reportedTime}</span>
       </div>
       <div style="font-size: 11px; color: #666666; margin-left: 24px;">${ticket.location}</div>
-      <div class="sidebar-item-desc" style="margin-left: 24px;">${ticket.description}</div>
+      <div class="sideItemDesc" style="margin-left: 24px;">${ticket.description}</div>
       <div style="margin-top: 12px; margin-left: 24px; display:flex; justify-content:space-between; align-items:center;">
         <span style="font-size:11px; color:#666666;">Report #${ticket.id}</span>
-        <span class="status-badge ${get_status_badge_css(ticket.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${ticket.status}</span>
+        <span class="badgeStatusIndicator ${get_status_badge_css(ticket.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${ticket.status}</span>
       </div>
     `;
 
@@ -1253,14 +1253,14 @@ function draw_my_reports_list() {
 
   userIssues.forEach(ticket => {
     const card = document.createElement('div');
-    card.className = 'white-card';
+    card.className = 'cardBrutalistWhite';
     card.style.padding = '16px';
     card.style.cursor = 'pointer';
     
     card.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #d1d5db; padding-bottom:8px; margin-bottom:8px;">
         <span style="font-weight:bold; font-family:'JetBrains Mono', monospace; font-size:12px;">#${ticket.id}</span>
-        <span class="status-badge ${get_status_badge_css(ticket.status)}" style="font-size: 8px; min-width:55px; padding:1px 3px;">${ticket.status}</span>
+        <span class="badgeStatusIndicator ${get_status_badge_css(ticket.status)}" style="font-size: 8px; min-width:55px; padding:1px 3px;">${ticket.status}</span>
       </div>
       <h3 style="font-size:13px; font-weight:bold; text-transform:uppercase;">${ticket.title}</h3>
       <p style="font-size:11px; color:#666666; margin-top:2px;">Location: ${ticket.location}</p>
@@ -1294,7 +1294,7 @@ function draw_live_action_feed() {
 
   filtered.forEach(log => {
     const card = document.createElement('article');
-    card.className = 'activity-card';
+    card.className = 'activityCardItem';
 
     let iconHTML = '';
     if (log.type === 'resolved') {
@@ -1306,20 +1306,20 @@ function draw_live_action_feed() {
     }
 
     card.innerHTML = `
-      <div class="activity-icon-container">
+      <div class="activityIconBox">
         ${iconHTML}
       </div>
-      <div class="activity-details">
-        <header class="activity-meta">
-          <span class="activity-location">${log.location}</span>
-          <span class="activity-time">${log.time}</span>
+      <div class="activityDetailsArea">
+        <header class="activityHeaderMeta">
+          <span class="activityLocText">${log.location}</span>
+          <span class="activityTimeText">${log.time}</span>
         </header>
-        <p class="activity-desc">${log.desc}</p>
+        <p class="activityDescParagraph">${log.desc}</p>
       </div>
     `;
 
     // Timeline ticket link reference trigger
-    const refLink = card.querySelector('.activity-desc span.font-bold');
+    const refLink = card.querySelector('.activityDescParagraph span.font-bold');
     if (refLink && refLink.textContent.includes('#')) {
       refLink.style.cursor = 'pointer';
       refLink.style.textDecoration = 'underline';
@@ -1381,15 +1381,15 @@ function render_leaflet_pins() {
     else if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') pinType = 'resolved';
 
     const customIcon = L.divIcon({
-      className: 'custom-leaflet-marker',
-      html: `<div class="marker-pin ${pinType}"></div><div class="marker-label">#${ticket.id}:<br>${ticket.title.split(' ')[0]}</div>`,
+      className: 'customMkrWrap',
+      html: `<div class="mkrPinDot ${pinType}"></div><div class="mkrLabelTooltip">#${ticket.id}:<br>${ticket.title.split(' ')[0]}</div>`,
       iconSize: [40, 48],
       iconAnchor: [7, 7]
     });
 
     const miniIcon = L.divIcon({
-      className: 'custom-leaflet-marker',
-      html: `<div class="marker-pin ${pinType}" style="transform: scale(0.75);"></div>`,
+      className: 'customMkrWrap',
+      html: `<div class="mkrPinDot ${pinType}" style="transform: scale(0.75);"></div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7]
     });
@@ -1419,15 +1419,15 @@ function render_leaflet_pins() {
   // User location marker
   if (cityCenter) {
     const userLocationIcon = L.divIcon({
-      className: 'custom-leaflet-marker user-location-marker-container',
-      html: `<div class="marker-pin user-location"></div><div class="marker-label" style="background-color: #3b82f6; color: #ffffff; border-color: #3b82f6; font-weight: bold; font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 1px 4px;">YOU</div>`,
+      className: 'customMkrWrap user-location-marker-container',
+      html: `<div class="mkrPinDot user-location"></div><div class="mkrLabelTooltip" style="background-color: #3b82f6; color: #ffffff; border-color: #3b82f6; font-weight: bold; font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 1px 4px;">YOU</div>`,
       iconSize: [40, 48],
       iconAnchor: [7, 7]
     });
 
     const userLocationMiniIcon = L.divIcon({
-      className: 'custom-leaflet-marker',
-      html: `<div class="marker-pin user-location" style="transform: scale(0.75);"></div>`,
+      className: 'customMkrWrap',
+      html: `<div class="mkrPinDot user-location" style="transform: scale(0.75);"></div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7]
     });
@@ -1479,11 +1479,11 @@ function render_tracking_detail_card() {
     const titleClass = isCompleted ? '' : 'pending';
     
     timelineStepsHTML += `
-      <div class="timeline-step">
-        <div class="timeline-dot ${dotClass}"></div>
-        <div class="timeline-content">
-          <span class="timeline-title ${titleClass}">${step.title}</span>
-          <span class="timeline-time">${step.time}</span>
+      <div class="tstepRow">
+        <div class="tdotCircle ${dotClass}"></div>
+        <div class="tstepContent">
+          <span class="tstepTitle ${titleClass}">${step.title}</span>
+          <span class="tstepTime">${step.time}</span>
         </div>
       </div>
     `;
@@ -1507,16 +1507,16 @@ function render_tracking_detail_card() {
       </div>
     ` : ''}
     
-    <div class="tracking-timeline">
+    <div class="timelineStepsWrap">
       ${timelineStepsHTML}
     </div>
     
     ${ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED' ? `
       <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
-        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${fmc_store.upvoted_registry.includes(ticket.id) ? 'disabled' : ''}>
+        <button class="btnBase btnSecondary" id="btn-upvote-issue" style="flex:1;" ${fmc_store.upvoted_registry.includes(ticket.id) ? 'disabled' : ''}>
           ${fmc_store.upvoted_registry.includes(ticket.id) ? 'Upvoted' : 'Upvote'}
         </button>
-        <button class="btn btn-primary" id="btn-resolve-issue-mock" style="flex:1;">
+        <button class="btnBase btnPrimary" id="btn-resolve-issue-mock" style="flex:1;">
           Resolve
         </button>
       </div>
@@ -1533,7 +1533,7 @@ function render_tracking_detail_card() {
         const hasPin = fmc_store.pin_overrides && fmc_store.pin_overrides.includes(ticket.id);
         return `
           <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
-            <button class="btn ${hasPin ? 'btn-secondary' : 'btn-primary'}" id="btn-toggle-history-pin" style="flex:1;">
+            <button class="btnBase ${hasPin ? 'btnSecondary' : 'btnPrimary'}" id="btn-toggle-history-pin" style="flex:1;">
               ${hasPin ? 'Remove Pin' : 'Show Pin on Map'}
             </button>
           </div>
