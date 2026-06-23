@@ -1,4 +1,4 @@
-const incidentRegistry = {
+const reportStore = {
   activeTab: 'dashboard',
   issues: [
     {
@@ -100,7 +100,7 @@ const incidentRegistry = {
   forcedHistoryPins: []
 };
 
-let incidentAuditTrail = [
+let activityRecords = [
   {
     id: 'log-1',
     location: 'Sector 12 Market',
@@ -151,8 +151,8 @@ let draftMarker = null;
 
 let myLoc = [28.4089, 77.3178]; 
 
-let localStoredIncidents = [];
-let localStoredLogs = [];
+let savedReports = [];
+let auditTrail = [];
 let attachedScreenshotBase64 = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -172,18 +172,18 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeIncidentMaps();
   initializeLocationTracking();
   initializeIncidentAddressTypeahead();
-  syncIncidentUI();
+  reloadReportsData();
 });
 
 function loadStoredIncidents() {
   try {
-    localStoredIncidents = JSON.parse(localStorage.getItem("community_custom_issues")) || [];
-    localStoredLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
-    incidentRegistry.upvotedIssues = JSON.parse(localStorage.getItem("community_upvoted_issues")) || [];
-    incidentRegistry.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
+    savedReports = JSON.parse(localStorage.getItem("community_custom_issues")) || [];
+    auditTrail = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
+    reportStore.upvotedIssues = JSON.parse(localStorage.getItem("community_upvoted_issues")) || [];
+    reportStore.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
     
     var default_upvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
-    for (const issue of incidentRegistry.issues) {
+    for (const issue of reportStore.issues) {
       let existing_val = default_upvotes[issue.id];
       if (existing_val !== undefined) {
         let current_upvotes = issue.upvotes || 0;
@@ -191,11 +191,11 @@ function loadStoredIncidents() {
       }
     }
   } catch (err) {
-    console.error("Failed to load local storage data:", err);
+    console.error("Unable to load stored complaints", err);
   }
 
-  incidentRegistry.issues = [...localStoredIncidents, ...incidentRegistry.issues];
-  incidentAuditTrail = [...localStoredLogs, ...incidentAuditTrail];
+  reportStore.issues = [...savedReports, ...reportStore.issues];
+  activityRecords = [...auditTrail, ...activityRecords];
 }
 
 function monitorConnectivity() {
@@ -431,7 +431,7 @@ async function initializeLocationTracking() {
     if (latField) latField.value = lat.toFixed(5);
     if (lngField) lngField.value = lng.toFixed(5);
     
-    for (const issue of incidentRegistry.issues) {
+    for (const issue of reportStore.issues) {
       const offset = offsets[issue.id];
       if (offset) {
         issue.coordinates = {
@@ -442,7 +442,7 @@ async function initializeLocationTracking() {
     }
 
     if (dashboardMap) dashboardMap.setView([lat, lng], 13);
-    if (interactiveMap) interactiveMap.setView([lat, lng], incidentRegistry.zoomLevel);
+    if (interactiveMap) interactiveMap.setView([lat, lng], reportStore.zoomLevel);
 
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
     try {
@@ -468,7 +468,7 @@ async function initializeLocationTracking() {
     if (latField) latField.value = myLoc[0].toFixed(5);
     if (lngField) lngField.value = myLoc[1].toFixed(5);
 
-    for (const issue of incidentRegistry.issues) {
+    for (const issue of reportStore.issues) {
       const offset = offsets[issue.id];
       if (offset) {
         issue.coordinates = {
@@ -479,7 +479,7 @@ async function initializeLocationTracking() {
     }
 
     if (dashboardMap) dashboardMap.setView(myLoc, 13);
-    if (interactiveMap) interactiveMap.setView(myLoc, incidentRegistry.zoomLevel);
+    if (interactiveMap) interactiveMap.setView(myLoc, reportStore.zoomLevel);
 
     updateLocalityLabels("Faridabad", "Sector 15", "Mathura Road");
   };
@@ -511,7 +511,7 @@ function updateLocalityLabels(city, suburb, road) {
     profileLocEl.textContent = `${city} Resident • ${suburb}`;
   }
   
-  for (const issue of incidentRegistry.issues) {
+  for (const issue of reportStore.issues) {
     if (issue.id === '1248') {
       issue.location = `${suburb} Market Road`;
     } else if (issue.id === '1245') {
@@ -525,7 +525,7 @@ function updateLocalityLabels(city, suburb, road) {
     }
   }
 
-  for (const log of incidentAuditTrail) {
+  for (const log of activityRecords) {
     if (log.id === 'log-1') {
       log.location = `${suburb} Market`;
       log.desc = log.desc.replace(/Sector 12 Market/g, `${suburb} Market`);
@@ -544,7 +544,7 @@ function updateLocalityLabels(city, suburb, road) {
     }
   }
   
-  syncIncidentUI();
+  reloadReportsData();
 }
 
 function initializeIncidentMaps() {
@@ -573,7 +573,7 @@ function initializeIncidentMaps() {
   if (interactiveMapEl) {
     interactiveMap = L.map('interactive-map', {
       zoomControl: false
-    }).setView(myLoc, incidentRegistry.zoomLevel);
+    }).setView(myLoc, reportStore.zoomLevel);
 
     L.tileLayer(googleRoadTiles, tileOptions).addTo(interactiveMap);
   }
@@ -668,7 +668,7 @@ function bindAppTabEvents() {
 }
 
 function switchAppTab(targetTabId) {
-  incidentRegistry.activeTab = targetTabId;
+  reportStore.activeTab = targetTabId;
   
   const navLinks = document.querySelectorAll('.nav-link');
   for (const link of navLinks) {
@@ -691,13 +691,13 @@ function switchAppTab(targetTabId) {
   if (targetTabId === 'map' && interactiveMap) {
     setTimeout(() => {
       interactiveMap.invalidateSize();
-      renderIncidentMarkers();
+      updateIssueMarkers();
       renderIncidentDetailsCard();
     }, 100);
   } else if (targetTabId === 'dashboard' && dashboardMap) {
     setTimeout(() => {
       dashboardMap.invalidateSize();
-      renderIncidentMarkers();
+      updateIssueMarkers();
       renderIncidentDetailsCard();
     }, 100);
   }
@@ -815,8 +815,12 @@ function handleIncidentReportSubmit() {
         ]
       };
 
-      localStoredIncidents.unshift(newIssue);
-      localStorage.setItem('community_custom_issues', JSON.stringify(localStoredIncidents));
+      savedReports.unshift(newIssue);
+      try {
+        localStorage.setItem('community_custom_issues', JSON.stringify(savedReports));
+      } catch (err) {
+        console.error("Failed to save report locally", err);
+      }
 
       const newLog = {
         id: `log-${Date.now()}`,
@@ -826,12 +830,16 @@ function handleIncidentReportSubmit() {
         tag: 'NEW',
         type: 'new'
       };
-      localStoredLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(localStoredLogs));
+      auditTrail.unshift(newLog);
+      try {
+        localStorage.setItem('community_custom_activity_logs', JSON.stringify(auditTrail));
+      } catch (err) {
+        console.error("Failed to save report locally", err);
+      }
 
-      incidentRegistry.issues.unshift(newIssue);
-      incidentRegistry.selectedIssueId = newId;
-      incidentAuditTrail.unshift(newLog);
+      reportStore.issues.unshift(newIssue);
+      reportStore.selectedIssueId = newId;
+      activityRecords.unshift(newLog);
 
       form.reset();
       if (filePreview) filePreview.style.display = 'none';
@@ -846,7 +854,7 @@ function handleIncidentReportSubmit() {
       if (latField) latField.value = myLoc[0].toFixed(5);
       if (lngField) lngField.value = myLoc[1].toFixed(5);
 
-      syncIncidentUI();
+      reloadReportsData();
       switchAppTab('dashboard');
     });
   }
@@ -894,8 +902,8 @@ function setupIncidentSearchFilters() {
   if (searchInput && searchDropdown) {
     searchInput.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase().trim();
-      incidentRegistry.searchQuery = query;
-      renderIncidentTable();
+      reportStore.searchQuery = query;
+      renderReportsGrid();
 
       if (!query) {
         searchDropdown.style.display = 'none';
@@ -903,7 +911,7 @@ function setupIncidentSearchFilters() {
         return;
       }
 
-      const matches = incidentRegistry.issues.filter(issue => 
+      const matches = reportStore.issues.filter(issue => 
         issue.title.toLowerCase().indexOf(query) !== -1 || 
         issue.description.toLowerCase().indexOf(query) !== -1 || 
         issue.location.toLowerCase().indexOf(query) !== -1 || 
@@ -938,11 +946,11 @@ function setupIncidentSearchFilters() {
 
         item.addEventListener('click', () => {
           searchInput.value = issue.title;
-          incidentRegistry.searchQuery = '';
+          reportStore.searchQuery = '';
           searchDropdown.style.display = 'none';
-          incidentRegistry.selectedIssueId = issue.id;
+          reportStore.selectedIssueId = issue.id;
           switchAppTab('map');
-          renderIncidentTable();
+          renderReportsGrid();
         });
 
         searchDropdown.appendChild(item);
@@ -959,12 +967,12 @@ function setupIncidentSearchFilters() {
 
   const filterStatus = document.getElementById('table-filter-status');
   if (filterStatus) {
-    filterStatus.addEventListener('change', renderIncidentTable);
+    filterStatus.addEventListener('change', renderReportsGrid);
   }
 
   const filterCategory = document.getElementById('table-filter-category');
   if (filterCategory) {
-    filterCategory.addEventListener('change', renderIncidentTable);
+    filterCategory.addEventListener('change', renderReportsGrid);
   }
 
   const exportBtn = document.getElementById('btn-export-issues');
@@ -984,7 +992,7 @@ function setupIncidentSearchFilters() {
         'Status', 'Upvotes', 'Reported Date', 'Reported Time', 'Reporter', 'Description'
       ];
 
-      const rows = incidentRegistry.issues.map(issue => {
+      const rows = reportStore.issues.map(issue => {
         const lat = issue.coordinates ? issue.coordinates.lat : '';
         const lng = issue.coordinates ? issue.coordinates.lng : '';
         return [
@@ -1003,16 +1011,20 @@ function setupIncidentSearchFilters() {
         ].join(',');
       });
 
-      const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", url);
-      downloadAnchor.setAttribute("download", `community_reports_${Date.now()}.csv`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      URL.revokeObjectURL(url);
+      try {
+        const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", url);
+        downloadAnchor.setAttribute("download", `community_reports_${Date.now()}.csv`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("CSV export failed", err);
+      }
     });
   }
 
@@ -1023,25 +1035,25 @@ function setupIncidentSearchFilters() {
         t.classList.remove('active');
       }
       tab.classList.add('active');
-      incidentRegistry.activityFilter = tab.getAttribute('data-filter');
+      reportStore.activityFilter = tab.getAttribute('data-filter');
       renderIncidentActivityTimeline();
     });
   }
 }
 
-function syncIncidentUI() {
-  calculateSystemMetrics();
-  renderIncidentTable();
+function reloadReportsData() {
+  updateDashboardStats();
+  renderReportsGrid();
   renderActiveIncidentsSidebar();
   renderCitizenReportHistory();
   renderIncidentActivityTimeline();
-  renderIncidentMarkers();
+  updateIssueMarkers();
   renderIncidentDetailsCard();
 }
 
-function calculateSystemMetrics() {
-  const userReported = incidentRegistry.issues.filter(i => i.reporter === 'Resident User #402').length;
-  const userResolved = incidentRegistry.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
+function updateDashboardStats() {
+  const userReported = reportStore.issues.filter(i => i.reporter === 'Resident User #402').length;
+  const userResolved = reportStore.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
 
   const reportedEl = document.getElementById('profile-reported-count');
   if (reportedEl) reportedEl.textContent = userReported;
@@ -1049,10 +1061,10 @@ function calculateSystemMetrics() {
   const resolvedEl = document.getElementById('profile-resolved-count');
   if (resolvedEl) resolvedEl.textContent = userResolved;
 
-  const totalReports = incidentRegistry.issues.length;
-  const resolvedReports = incidentRegistry.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
-  const openReports = incidentRegistry.issues.filter(i => i.status === 'OPEN').length;
-  const pendingReports = incidentRegistry.issues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
+  const totalReports = reportStore.issues.length;
+  const resolvedReports = reportStore.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
+  const openReports = reportStore.issues.filter(i => i.status === 'OPEN').length;
+  const pendingReports = reportStore.issues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
 
   const totalEl = document.getElementById('stats-total-count');
   if (totalEl) totalEl.textContent = totalReports;
@@ -1081,28 +1093,37 @@ function getIncidentBadgeClass(status) {
   return "badge-open";
 }
 
-function renderIncidentTable() {
-  const tbody = document.getElementById('issues-table-body');
-  if (!tbody) return;
-
+function applyReportFilters() {
   const statusFilterEl = document.getElementById('table-filter-status');
   const categoryFilterEl = document.getElementById('table-filter-category');
 
   const statusFilter = statusFilterEl ? statusFilterEl.value : 'all';
   const categoryFilter = categoryFilterEl ? categoryFilterEl.value : 'all';
 
-  const filtered = incidentRegistry.issues.filter(issue => {
+  return reportStore.issues.filter(issue => {
+    // Older localStorage entries may not contain description, location or ID
+    const query = reportStore.searchQuery || '';
+    const id = issue.id || '';
+    const title = issue.title || '';
+    const loc = issue.location || '';
+    
     const matchesSearch = 
-      issue.id.indexOf(incidentRegistry.searchQuery) !== -1 ||
-      issue.title.toLowerCase().indexOf(incidentRegistry.searchQuery) !== -1 ||
-      issue.location.toLowerCase().indexOf(incidentRegistry.searchQuery) !== -1;
+      id.indexOf(query) !== -1 ||
+      title.toLowerCase().indexOf(query) !== -1 ||
+      loc.toLowerCase().indexOf(query) !== -1;
     
     const matchesStatus = (statusFilter === 'all') || (issue.status === statusFilter);
     const matchesCategory = (categoryFilter === 'all') || (issue.category === categoryFilter);
     
     return matchesSearch && matchesStatus && matchesCategory;
   });
+}
 
+function renderReportsGrid() {
+  const tbody = document.getElementById('issues-table-body');
+  if (!tbody) return;
+
+  const filtered = applyReportFilters();
   tbody.innerHTML = '';
   
   if (filtered.length === 0) {
@@ -1111,6 +1132,7 @@ function renderIncidentTable() {
   }
 
   for (const issue of filtered) {
+    // support older saved reports that might not have resolvedDate
     const isResolvedOrClosed = issue.status === 'RESOLVED' || issue.status === 'CLOSED';
     let isOlderThan5Days = false;
     if (isResolvedOrClosed && issue.resolvedDate) {
@@ -1119,7 +1141,7 @@ function renderIncidentTable() {
       const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
       isOlderThan5Days = diffDays > 5;
     }
-    const hasPin = incidentRegistry.forcedHistoryPins && incidentRegistry.forcedHistoryPins.indexOf(issue.id) !== -1;
+    const hasPin = reportStore.forcedHistoryPins && reportStore.forcedHistoryPins.indexOf(issue.id) !== -1;
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1142,7 +1164,7 @@ function renderIncidentTable() {
     const cell = tr.querySelector('.issue-id-cell');
     if (cell) {
       cell.addEventListener('click', () => {
-        incidentRegistry.selectedIssueId = issue.id;
+        reportStore.selectedIssueId = issue.id;
         switchAppTab('map');
       });
     }
@@ -1152,19 +1174,19 @@ function renderIncidentTable() {
       if (pinBtn) {
         pinBtn.addEventListener('click', (e) => {
           e.stopPropagation(); 
-          if (!incidentRegistry.forcedHistoryPins) {
-            incidentRegistry.forcedHistoryPins = [];
+          if (!reportStore.forcedHistoryPins) {
+            reportStore.forcedHistoryPins = [];
           }
-          const idx = incidentRegistry.forcedHistoryPins.indexOf(issue.id);
+          const idx = reportStore.forcedHistoryPins.indexOf(issue.id);
           if (idx === -1) {
-            incidentRegistry.forcedHistoryPins.push(issue.id);
+            reportStore.forcedHistoryPins.push(issue.id);
           } else {
-            incidentRegistry.forcedHistoryPins.splice(idx, 1);
+            reportStore.forcedHistoryPins.splice(idx, 1);
           }
-          localStorage.setItem('community_forced_history_pins', JSON.stringify(incidentRegistry.forcedHistoryPins));
+          localStorage.setItem('community_forced_history_pins', JSON.stringify(reportStore.forcedHistoryPins));
           
-          renderIncidentMarkers();
-          renderIncidentTable();
+          updateIssueMarkers();
+          renderReportsGrid();
         });
       }
     }
@@ -1180,7 +1202,7 @@ function renderActiveIncidentsSidebar() {
   listContainer.innerHTML = '';
   let activeCount = 0;
 
-  for (const issue of incidentRegistry.issues) {
+  for (const issue of reportStore.issues) {
     if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') {
       continue; 
     }
@@ -1206,7 +1228,7 @@ function renderActiveIncidentsSidebar() {
     `;
 
     item.addEventListener('click', () => {
-      incidentRegistry.selectedIssueId = issue.id;
+      reportStore.selectedIssueId = issue.id;
       switchAppTab('map');
     });
 
@@ -1222,7 +1244,7 @@ function renderCitizenReportHistory() {
   const container = document.getElementById('profile-issues-list');
   if (!container) return;
 
-  const userIssues = incidentRegistry.issues.filter(i => i.reporter === 'Resident User #402');
+  const userIssues = reportStore.issues.filter(i => i.reporter === 'Resident User #402');
   container.innerHTML = '';
 
   if (userIssues.length === 0) {
@@ -1255,7 +1277,7 @@ function renderCitizenReportHistory() {
     `;
 
     card.addEventListener('click', () => {
-      incidentRegistry.selectedIssueId = issue.id;
+      reportStore.selectedIssueId = issue.id;
       switchAppTab('map');
     });
 
@@ -1269,9 +1291,9 @@ function renderIncidentActivityTimeline() {
 
   container.innerHTML = '';
 
-  let filtered = incidentAuditTrail;
-  if (incidentRegistry.activityFilter !== 'all') {
-    filtered = incidentAuditTrail.filter(log => log.type === incidentRegistry.activityFilter);
+  let filtered = activityRecords;
+  if (reportStore.activityFilter !== 'all') {
+    filtered = activityRecords.filter(log => log.type === reportStore.activityFilter);
   }
 
   if (filtered.length === 0) {
@@ -1311,7 +1333,7 @@ function renderIncidentActivityTimeline() {
       refLink.addEventListener('click', () => {
         const idMatch = refLink.textContent.match(/#(\d+)/);
         if (idMatch && idMatch[1]) {
-          incidentRegistry.selectedIssueId = idMatch[1];
+          reportStore.selectedIssueId = idMatch[1];
           switchAppTab('map');
         }
       });
@@ -1321,7 +1343,7 @@ function renderIncidentActivityTimeline() {
   }
 }
 
-function renderIncidentMarkers() {
+function updateIssueMarkers() {
   for (const m of dashboardMarkers) {
     dashboardMap.removeLayer(m);
   }
@@ -1332,11 +1354,17 @@ function renderIncidentMarkers() {
   dashboardMarkers = [];
   interactiveMarkers = [];
 
-  for (const issue of incidentRegistry.issues) {
+  for (const issue of reportStore.issues) {
+    // Older localStorage entries may not contain coordinates
+    if (!issue.coordinates || !issue.coordinates.lat || !issue.coordinates.lng) {
+      continue;
+    }
+
     let isVisible = true;
     const is_resolved = (issue.status === 'RESOLVED' || issue.status === 'CLOSED');
     if (is_resolved) {
-      const hasForcedPin = incidentRegistry.forcedHistoryPins && incidentRegistry.forcedHistoryPins.indexOf(issue.id) > -1;
+      // support older saved reports
+      const hasForcedPin = reportStore.forcedHistoryPins && reportStore.forcedHistoryPins.indexOf(issue.id) > -1;
       if (!hasForcedPin) {
         if (!issue.resolvedDate) {
           isVisible = true;
@@ -1375,7 +1403,7 @@ function renderIncidentMarkers() {
       
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        incidentRegistry.selectedIssueId = issue.id;
+        reportStore.selectedIssueId = issue.id;
         interactiveMap.setView([issue.coordinates.lat, issue.coordinates.lng], 16);
         renderIncidentDetailsCard();
       });
@@ -1419,8 +1447,8 @@ function renderIncidentMarkers() {
     }
   }
 
-  if (incidentRegistry.activeTab === 'map' && incidentRegistry.selectedIssueId) {
-    const selected = incidentRegistry.issues.find(i => i.id === incidentRegistry.selectedIssueId);
+  if (reportStore.activeTab === 'map' && reportStore.selectedIssueId) {
+    const selected = reportStore.issues.find(i => i.id === reportStore.selectedIssueId);
     if (selected && interactiveMap) {
       interactiveMap.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
     }
@@ -1431,7 +1459,7 @@ function renderIncidentDetailsCard() {
   const panel = document.getElementById('tracking-detail-panel');
   if (!panel) return;
 
-  const issue = incidentRegistry.issues.find(i => i.id === incidentRegistry.selectedIssueId);
+  const issue = reportStore.issues.find(i => i.id === reportStore.selectedIssueId);
   
   if (!issue) {
     panel.innerHTML = `
@@ -1486,14 +1514,15 @@ function renderIncidentDetailsCard() {
     
     ${issue.status !== 'RESOLVED' && issue.status !== 'CLOSED' ? `
       <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
-        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${incidentRegistry.upvotedIssues.includes(issue.id) ? 'disabled' : ''}>
-          ${incidentRegistry.upvotedIssues.includes(issue.id) ? 'Upvoted' : 'Upvote'}
+        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${reportStore.upvotedIssues.includes(issue.id) ? 'disabled' : ''}>
+          ${reportStore.upvotedIssues.includes(issue.id) ? 'Upvoted' : 'Upvote'}
         </button>
         <button class="btn btn-primary" id="btn-resolve-issue-mock" style="flex:1;">
           Resolve
         </button>
       </div>
     ` : (() => {
+      // support older saved reports
       const isResolvedOrClosed = issue.status === 'RESOLVED' || issue.status === 'CLOSED';
       let isOlderThan5Days = false;
       if (isResolvedOrClosed && issue.resolvedDate) {
@@ -1503,7 +1532,7 @@ function renderIncidentDetailsCard() {
         isOlderThan5Days = diffDays > 5;
       }
       if (isOlderThan5Days) {
-        const hasPin = incidentRegistry.forcedHistoryPins && incidentRegistry.forcedHistoryPins.includes(issue.id);
+        const hasPin = reportStore.forcedHistoryPins && reportStore.forcedHistoryPins.includes(issue.id);
         return `
           <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
             <button class="btn ${hasPin ? 'btn-secondary' : 'btn-primary'}" id="btn-toggle-history-pin" style="flex:1;">
@@ -1527,19 +1556,27 @@ function renderIncidentDetailsCard() {
       upvoteBtn.disabled = true;
       upvoteBtn.textContent = 'Upvoted';
 
-      if (!incidentRegistry.upvotedIssues.includes(issue.id)) {
-        incidentRegistry.upvotedIssues.push(issue.id);
-        localStorage.setItem('community_upvoted_issues', JSON.stringify(incidentRegistry.upvotedIssues));
+      if (!reportStore.upvotedIssues.includes(issue.id)) {
+        reportStore.upvotedIssues.push(issue.id);
+        localStorage.setItem('community_upvoted_issues', JSON.stringify(reportStore.upvotedIssues));
       }
 
-      const customIdx = localStoredIncidents.findIndex(i => i.id === issue.id);
+      const customIdx = savedReports.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
-        localStoredIncidents[customIdx].upvotes = issue.upvotes;
-        localStorage.setItem('community_custom_issues', JSON.stringify(localStoredIncidents));
+        savedReports[customIdx].upvotes = issue.upvotes;
+        try {
+          localStorage.setItem('community_custom_issues', JSON.stringify(savedReports));
+        } catch (err) {
+          console.error("Failed to save report locally", err);
+        }
       } else {
         const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
         defaultIssuesUpvotes[issue.id] = (defaultIssuesUpvotes[issue.id] || 0) + 1;
-        localStorage.setItem('community_default_issues_upvotes', JSON.stringify(defaultIssuesUpvotes));
+        try {
+          localStorage.setItem('community_default_issues_upvotes', JSON.stringify(defaultIssuesUpvotes));
+        } catch (err) {
+          console.error("Failed to save report locally", err);
+        }
       }
 
       const newLog = {
@@ -1551,9 +1588,13 @@ function renderIncidentDetailsCard() {
         type: 'update'
       };
       incidentAuditTrail.unshift(newLog);
-      localStoredLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(localStoredLogs));
-      syncIncidentUI();
+      auditTrail.unshift(newLog);
+      try {
+        localStorage.setItem('community_custom_activity_logs', JSON.stringify(auditTrail));
+      } catch (err) {
+        console.error("Failed to save report locally", err);
+      }
+      reloadReportsData();
     });
   }
 
@@ -1578,35 +1619,43 @@ function renderIncidentDetailsCard() {
       };
       incidentAuditTrail.unshift(newLog);
 
-      const customIdx = localStoredIncidents.findIndex(i => i.id === issue.id);
+      const customIdx = savedReports.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
-        localStoredIncidents[customIdx].status = 'RESOLVED';
-        localStoredIncidents[customIdx].resolvedDate = issue.resolvedDate;
-        localStoredIncidents[customIdx].timeline = issue.timeline;
-        localStorage.setItem('community_custom_issues', JSON.stringify(localStoredIncidents));
+        savedReports[customIdx].status = 'RESOLVED';
+        savedReports[customIdx].resolvedDate = issue.resolvedDate;
+        savedReports[customIdx].timeline = issue.timeline;
+        try {
+          localStorage.setItem('community_custom_issues', JSON.stringify(savedReports));
+        } catch (err) {
+          console.error("Failed to save report locally", err);
+        }
       }
 
-      localStoredLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(localStoredLogs));
+      auditTrail.unshift(newLog);
+      try {
+        localStorage.setItem('community_custom_activity_logs', JSON.stringify(auditTrail));
+      } catch (err) {
+        console.error("Failed to save report locally", err);
+      }
 
-      syncIncidentUI();
+      reloadReportsData();
     });
   }
 
   const toggleHistoryPinBtn = document.getElementById('btn-toggle-history-pin');
   if (toggleHistoryPinBtn) {
     toggleHistoryPinBtn.addEventListener('click', () => {
-      if (!incidentRegistry.forcedHistoryPins) {
-        incidentRegistry.forcedHistoryPins = [];
+      if (!reportStore.forcedHistoryPins) {
+        reportStore.forcedHistoryPins = [];
       }
-      const idx = incidentRegistry.forcedHistoryPins.indexOf(issue.id);
+      const idx = reportStore.forcedHistoryPins.indexOf(issue.id);
       if (idx === -1) {
-        incidentRegistry.forcedHistoryPins.push(issue.id);
+        reportStore.forcedHistoryPins.push(issue.id);
       } else {
-        incidentRegistry.forcedHistoryPins.splice(idx, 1);
+        reportStore.forcedHistoryPins.splice(idx, 1);
       }
-      localStorage.setItem('community_forced_history_pins', JSON.stringify(incidentRegistry.forcedHistoryPins));
-      renderIncidentMarkers();
+      localStorage.setItem('community_forced_history_pins', JSON.stringify(reportStore.forcedHistoryPins));
+      updateIssueMarkers();
       renderIncidentDetailsCard();
     });
   }
