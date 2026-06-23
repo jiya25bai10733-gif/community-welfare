@@ -11,6 +11,12 @@ This project transforms a shuffle-assigned wireframe design into a fully interac
 
 ---
 
+## 🎥 Demo Video
+* **Live Walkthrough Video**: [Watch Demo Video (Replace with your uploaded YouTube/Loom/Drive link)](#)
+* **Local Playback**: Place your screen recording in the root directory named `demo_video.mp4` and link it: [Local Demo Video](./demo_video.mp4)
+
+---
+
 ## 🚀 Key Features
 
 ### 1. Dynamic Geolocation & Localization
