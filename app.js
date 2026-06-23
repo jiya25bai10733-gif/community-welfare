@@ -1,16 +1,4 @@
-/**
- * Community Welfare - Incident Reporting & Citizen Tracking Platform
- * 
- * Core client-side MVC state controller and UI synchronization engine.
- * Renders incident maps, resolves geolocation via Photon/OSM APIs, handles offline storage,
- * and generates Excel CSV report downloads natively.
- */
-
-/**
- * Core UI State Container
- * Tracks active navigation tabs, filters, live query state, map selections,
- * and the primary database of reported infrastructure complaints.
- */
+// Main database of reported issues and active user state
 const feedState = {
   activeTab: 'dashboard',
   issues: [
@@ -113,7 +101,7 @@ const feedState = {
   forcedHistoryPins: []
 };
 
-
+// System action logs feed
 let feedLogs = [
   {
     id: 'log-1',
@@ -157,22 +145,19 @@ let feedLogs = [
   }
 ];
 
+// Leaflet map instances and markers arrays
+let dashboardMap = null;
+let interactiveMap = null;
+let dashboardMarkers = [];
+let interactiveMarkers = [];
+let draftMarker = null;
 
-let miniMap = null;
-let bigMap = null;
-
-
-let miniPins = [];
-let bigPins = [];
-let placementMarker = null;
-
+// User coordinates (defaults to Faridabad if geolocation fails)
 let myLoc = [28.4089, 77.3178]; 
 
-
-let usrList = [];
-let usrLogs = [];
+let customIssues = [];
+let customLogs = [];
 let uploadedImageBase64 = null;
-
 
 document.addEventListener('DOMContentLoaded', () => {
   migrateLegacyStorage();
@@ -189,51 +174,38 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshApp();
 });
 
-
-/**
- * Data Restoration Loader
- * Restores user reports, custom activity logs, and upvote interactions from local storage.
- * Merges custom local records with preloaded regional mock data to populate the dashboard.
- */
+// Restore user reports, custom logs, upvotes, and pin overrides from local storage
 function readSaved() {
-     try {
-       usrList = JSON.parse(localStorage.getItem("community_custom_issues")) || [];
-       usrLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
-       feedState.upvotedIssues = JSON.parse(localStorage.getItem("community_upvoted_issues")) || [];
+  try {
+    customIssues = JSON.parse(localStorage.getItem("community_custom_issues")) || [];
+    customLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
+    feedState.upvotedIssues = JSON.parse(localStorage.getItem("community_upvoted_issues")) || [];
     feedState.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
-       
-       var default_upvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
-       feedState.issues.forEach(function(issue) {
-           let existing_val = default_upvotes[issue.id];
-           if (existing_val != undefined) {
-               let current_upvotes = issue.upvotes;
-               if (!current_upvotes) current_upvotes = 0;
-               issue.upvotes = current_upvotes + existing_val;
-           }
-       });
-     } catch (err) {
-       console.error("Failed to load local storage data:", err);
-     }
+    
+    var default_upvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
+    for (const issue of feedState.issues) {
+      let existing_val = default_upvotes[issue.id];
+      if (existing_val !== undefined) {
+        let current_upvotes = issue.upvotes || 0;
+        issue.upvotes = current_upvotes + existing_val;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load local storage data:", err);
+  }
 
-     feedState.issues = [...usrList, ...feedState.issues];
-    feedLogs = [...usrLogs, ...feedLogs];
+  feedState.issues = [...customIssues, ...feedState.issues];
+  feedLogs = [...customLogs, ...feedLogs];
 }
 
-
-/**
- * Connection Status Monitor
- * Listens to browser network offline/online events and updates the header badge.
- * Prompts visual indicator shifts to let users know if reports are queued locally.
- */
+// Watch online/offline status to update the header connection badge
 function initNetCheck() {
   var status_el = document.getElementById("connection-status");
-  if (!status_el) {
-     return;
-  }
+  if (!status_el) return;
 
   function updateStatus() {
     var is_online = navigator.onLine;
-    if (is_online == true) {
+    if (is_online === true) {
       status_el.textContent = 'ONLINE';
       status_el.style.backgroundColor = '#1f2937';
       status_el.style.color = '#ffffff';
@@ -248,11 +220,10 @@ function initNetCheck() {
     }
   }
 
-  window.addEventListener('online', function() { updateStatus(); });
-  window.addEventListener('offline', function() { updateStatus(); });
+  window.addEventListener('online', updateStatus);
+  window.addEventListener('offline', updateStatus);
   updateStatus(); 
 }
-
 
 function setDefaultFormCoordinates() {
   const latField = document.getElementById('issue-lat');
@@ -261,14 +232,9 @@ function setDefaultFormCoordinates() {
   if (lngField) lngField.value = myLoc[1].toFixed(5);
 }
 
-
 let searchTimer = null;
 
-/**
- * Location Typeahead Auto-Suggestions
- * Integrates Photon API to query landmark recommendations in real-time as you type.
- * Autopopulates form coordinates and centers the interactive map on selections.
- */
+// Location autocomplete using Photon API
 function initTypeahead() {
   const inputEl = document.getElementById('issue-location');
   const dropdownEl = document.getElementById('location-autocomplete-dropdown');
@@ -284,56 +250,48 @@ function initTypeahead() {
       return;
     }
 
-    
-    searchTimer = setTimeout(() => {
+    searchTimer = setTimeout(async () => {
       let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=5`;
       if (myLoc && myLoc.length === 2) {
         url += `&lat=${myLoc[0]}&lon=${myLoc[1]}`;
       }
 
-      fetch(url)
-        .then(response => {
-          if (!response.ok) throw new Error("Network error during autocomplete");
-          return response.json();
-        })
-        .then(data => {
-          const features = data.features || [];
-          renderAutocompleteResults(features, inputEl, dropdownEl);
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network error during autocomplete");
+        const data = await response.json();
+        const features = data.features || [];
+        renderAutocompleteResults(features, inputEl, dropdownEl);
 
-          
-          if (features.length > 0) {
-            const firstFeature = features[0];
-            const geom = firstFeature.geometry;
-            if (geom && geom.coordinates && geom.coordinates.length === 2) {
-              const lng = geom.coordinates[0];
-              const lat = geom.coordinates[1];
-              setNewIssuePlacementMarker(lat, lng, false, true);
-            }
+        if (features.length > 0) {
+          const firstFeature = features[0];
+          const geom = firstFeature.geometry;
+          if (geom && geom.coordinates && geom.coordinates.length === 2) {
+            const lng = geom.coordinates[0];
+            const lat = geom.coordinates[1];
+            setNewIssuePlacementMarker(lat, lng, false, true);
           }
-        })
-        .catch(error => {
-          console.error("Autocomplete search failed:", error);
-        });
+        }
+      } catch (error) {
+        console.error("Autocomplete search failed:", error);
+      }
     }, 400);
   });
 
-  
   document.addEventListener('click', (e) => {
     if (e.target !== inputEl && e.target !== dropdownEl && !dropdownEl.contains(e.target)) {
       dropdownEl.style.display = 'none';
     }
   });
 
-  
   inputEl.addEventListener('focus', () => {
     if (inputEl.value.trim().length >= 3 && dropdownEl.children.length > 0) {
       dropdownEl.style.display = 'block';
     }
   });
 
-  
   inputEl.addEventListener('blur', () => {
-    setTimeout(() => {
+    setTimeout(async () => {
       const val = inputEl.value.trim();
       if (val.length < 3) return;
 
@@ -342,37 +300,33 @@ function initTypeahead() {
         url += `&lat=${myLoc[0]}&lon=${myLoc[1]}`;
       }
 
-      fetch(url)
-        .then(response => {
-          if (!response.ok) throw new Error("Geocoding on blur failed");
-          return response.json();
-        })
-        .then(data => {
-          if (data.features && data.features.length > 0) {
-            const feature = data.features[0];
-            const geom = feature.geometry;
-            if (geom && geom.coordinates && geom.coordinates.length === 2) {
-              const lng = geom.coordinates[0];
-              const lat = geom.coordinates[1];
-              
-              const latField = document.getElementById('issue-lat');
-              const lngField = document.getElementById('issue-lng');
-              if (latField) latField.value = lat.toFixed(5);
-              if (lngField) lngField.value = lng.toFixed(5);
-              
-              setNewIssuePlacementMarker(lat, lng);
-              console.log(`Auto-filled coordinates on blur for: "${val}" -> (${lat}, ${lng})`);
-            }
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Geocoding on blur failed");
+        const data = await response.json();
+        if (data.features && data.features.length > 0) {
+          const feature = data.features[0];
+          const geom = feature.geometry;
+          if (geom && geom.coordinates && geom.coordinates.length === 2) {
+            const lng = geom.coordinates[0];
+            const lat = geom.coordinates[1];
+            
+            const latField = document.getElementById('issue-lat');
+            const lngField = document.getElementById('issue-lng');
+            if (latField) latField.value = lat.toFixed(5);
+            if (lngField) lngField.value = lng.toFixed(5);
+            
+            setNewIssuePlacementMarker(lat, lng);
+            console.log(`Auto-filled coordinates on blur for: "${val}" -> (${lat}, ${lng})`);
           }
-        })
-        .catch(error => {
-          console.error("Geocoding on blur error:", error);
-        });
+        }
+      } catch (error) {
+        console.error("Geocoding on blur error:", error);
+      }
     }, 250);
   });
 
-  
-  inputEl.addEventListener('keydown', (e) => {
+  inputEl.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
       const val = inputEl.value.trim();
       if (val.length >= 3) {
@@ -383,30 +337,29 @@ function initTypeahead() {
           url += `&lat=${myLoc[0]}&lon=${myLoc[1]}`;
         }
 
-        fetch(url)
-          .then(res => {
-            if (!res.ok) throw new Error("Geocoding on Enter failed");
-            return res.json();
-          })
-          .then(data => {
-            if (data.features && data.features.length > 0) {
-              const geom = data.features[0].geometry;
-              if (geom && geom.coordinates && geom.coordinates.length === 2) {
-                const lng = geom.coordinates[0];
-                const lat = geom.coordinates[1];
-                
-                const latField = document.getElementById('issue-lat');
-                const lngField = document.getElementById('issue-lng');
-                if (latField) latField.value = lat.toFixed(5);
-                if (lngField) lngField.value = lng.toFixed(5);
-                
-                setNewIssuePlacementMarker(lat, lng);
-                dropdownEl.style.display = 'none';
-                console.log(`Auto-filled coordinates on Enter for: "${val}" -> (${lat}, ${lng})`);
-              }
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error("Geocoding on Enter failed");
+          const data = await res.json();
+          if (data.features && data.features.length > 0) {
+            const geom = data.features[0].geometry;
+            if (geom && geom.coordinates && geom.coordinates.length === 2) {
+              const lng = geom.coordinates[0];
+              const lat = geom.coordinates[1];
+              
+              const latField = document.getElementById('issue-lat');
+              const lngField = document.getElementById('issue-lng');
+              if (latField) latField.value = lat.toFixed(5);
+              if (lngField) lngField.value = lng.toFixed(5);
+              
+              setNewIssuePlacementMarker(lat, lng);
+              dropdownEl.style.display = 'none';
+              console.log(`Auto-filled coordinates on Enter for: "${val}" -> (${lat}, ${lng})`);
             }
-          })
-          .catch(err => console.error("Geocoding on Enter error:", err));
+          }
+        } catch (err) {
+          console.error("Geocoding on Enter error:", err);
+        }
       }
     }
   });
@@ -420,7 +373,7 @@ function renderAutocompleteResults(features, inputEl, dropdownEl) {
     return;
   }
 
-  features.forEach(feature => {
+  for (const feature of features) {
     const p = feature.properties;
     const geom = feature.geometry;
     
@@ -452,26 +405,18 @@ function renderAutocompleteResults(features, inputEl, dropdownEl) {
         if (latField) latField.value = lat.toFixed(5);
         if (lngField) lngField.value = lng.toFixed(5);
         
-        
         setNewIssuePlacementMarker(lat, lng);
-        
         console.log(`Autocomplete selected: ${formattedAddress} at (${lat}, ${lng})`);
       }
     });
     
     dropdownEl.appendChild(item);
-  });
+  }
 
   dropdownEl.style.display = 'block';
 }
 
-
-/**
- * Core Geolocation Handler
- * Requests browser GPS permission to center the experience locally.
- * Employs a silent fallback to Faridabad City Center to guarantee service availability
- * if permissions are denied or timeout occurs.
- */
+// Get user's current GPS location, or fallback to Faridabad if permission is denied
 function gpsLocate() {
   console.log("Tracking location...");
   
@@ -481,7 +426,6 @@ function gpsLocate() {
     return;
   }
 
-  
   const subtextEl = document.getElementById('dashboard-map-subtext');
   if (subtextEl) {
     subtextEl.textContent = "Detecting your location to show nearby issues...";
@@ -495,16 +439,9 @@ function gpsLocate() {
       
       myLoc = [lat, lng];
       
-      
       setDefaultFormCoordinates();
-      
-      
       shiftPins(lat, lng);
-      
-      
       panBoth(lat, lng);
-      
-      
       coordToAddr(lat, lng);
     },
     (error) => {
@@ -519,29 +456,17 @@ function gpsLocate() {
   );
 }
 
-/**
- * Geolocation Fallback Initialization
- * Default coordinator that places initial issues and centers map views around
- * Faridabad City Center if location access is unavailable.
- */
+// Default fallback position setup
 function setDefPos() {
-  
   myLoc = [28.4089, 77.3178];
   setDefaultFormCoordinates();
   shiftPins(myLoc[0], myLoc[1]);
   panBoth(myLoc[0], myLoc[1]);
-  
-  
   setLocLabels("Faridabad", "Sector 15", "Mathura Road");
 }
 
-/**
- * Incidents Coordinate Offset Calculator
- * Re-positions the default mock issues around the user's detected coordinates
- * using set offset variables to make them feel local to the neighborhood.
- */
+// Shift default mock issues coordinates relative to the user's location
 function shiftPins(lat, lng) {
-  
   const offsets = {
     '1248': { dLat: 0.0061, dLng: -0.0038 },
     '1245': { dLat: 0.0021, dLng: 0.0012 },
@@ -550,7 +475,7 @@ function shiftPins(lat, lng) {
     '1254': { dLat: -0.0109, dLng: 0.0032 }
   };
   
-  feedState.issues.forEach(issue => {
+  for (const issue of feedState.issues) {
     const offset = offsets[issue.id];
     if (offset) {
       issue.coordinates = {
@@ -558,80 +483,61 @@ function shiftPins(lat, lng) {
         lng: lng + offset.dLng
       };
     }
-  });
+  }
 }
 
-/**
- * Map Views Sync Recenterer
- * Adjusts zoom and centers both the dashboard minimap and main interactive maps
- * to a set coordinate point simultaneously.
- */
+// Center both maps on coordinates
 function panBoth(lat, lng) {
-  if (miniMap) {
-    miniMap.setView([lat, lng], 13);
+  if (dashboardMap) {
+    dashboardMap.setView([lat, lng], 13);
   }
-  if (bigMap) {
-    bigMap.setView([lat, lng], feedState.zoomLevel);
+  if (interactiveMap) {
+    interactiveMap.setView([lat, lng], feedState.zoomLevel);
   }
 }
 
-/**
- * Reverse Geocode Resolver
- * Queries OpenStreetMap's free Nominatim API to translate lat/lng coordinates
- * into readable suburb, road, and city text values.
- */
-function coordToAddr(lat, lng) {
+// Reverse geocode to get street address from lat/lng using Nominatim
+async function coordToAddr(lat, lng) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
   
-  fetch(url, {
-    headers: {
-      'Accept-Language': 'en'
-    }
-  })
-    .then(response => {
-      if (!response.ok) throw new Error("Network response was not ok");
-      return response.json();
-    })
-    .then(data => {
-      const address = data.address || {};
-      const city = address.city || address.town || address.village || address.municipality || address.county || 'Local Area';
-      const suburb = address.suburb || address.neighbourhood || address.quarter || address.city_district || address.road || 'Local Suburb';
-      const road = address.road || address.pedestrian || suburb || 'Main Road';
-      
-      console.log(`Reverse geocoded location: ${suburb}, ${city}`);
-      
-      setLocLabels(city, suburb, road);
-    })
-    .catch(error => {
-      console.error("Reverse geocoding failed:", error);
-      
-      const city = "Local Area";
-      const suburb = `Near ${lat.toFixed(3)}, ${lng.toFixed(3)}`;
-      const road = "Main Road";
-      setLocLabels(city, suburb, road);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Accept-Language': 'en'
+      }
     });
+    if (!response.ok) throw new Error("Network response was not ok");
+    const data = await response.json();
+    const address = data.address || {};
+    const city = address.city || address.town || address.village || address.municipality || address.county || 'Local Area';
+    const suburb = address.suburb || address.neighbourhood || address.quarter || address.city_district || address.road || 'Local Suburb';
+    const road = address.road || address.pedestrian || suburb || 'Main Road';
+    
+    console.log(`Reverse geocoded location: ${suburb}, ${city}`);
+    setLocLabels(city, suburb, road);
+  } catch (error) {
+    console.error("Reverse geocoding failed:", error);
+    
+    const city = "Local Area";
+    const suburb = `Near ${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+    const road = "Main Road";
+    setLocLabels(city, suburb, road);
+  }
 }
 
-/**
- * Localized Text UI Updater
- * Propagates resolved location text values to headers, profile labels,
- * preloaded issue summaries, and activity log templates for regional localization.
- */
+// Update labels on the page with localized names
 function setLocLabels(city, suburb, road) {
-  
   const subtextEl = document.getElementById('dashboard-map-subtext');
   if (subtextEl) {
     subtextEl.textContent = `Interactive City Map: View Reported Issues in ${city}`;
   }
-  
   
   const profileLocEl = document.getElementById('profile-location-text');
   if (profileLocEl) {
     profileLocEl.textContent = `${city} Resident • ${suburb}`;
   }
   
-  
-  feedState.issues.forEach(issue => {
+  for (const issue of feedState.issues) {
     if (issue.id === '1248') {
       issue.location = `${suburb} Market Road`;
     } else if (issue.id === '1245') {
@@ -643,10 +549,9 @@ function setLocLabels(city, suburb, road) {
     } else if (issue.id === '1254') {
       issue.location = `${road} Service Lane`;
     }
-  });
+  }
 
-  
-  feedLogs.forEach(log => {
+  for (const log of feedLogs) {
     if (log.id === 'log-1') {
       log.location = `${suburb} Market`;
       log.desc = log.desc.replace(/Sector 12 Market/g, `${suburb} Market`);
@@ -663,20 +568,13 @@ function setLocLabels(city, suburb, road) {
       log.location = `${road} Path`;
       log.desc = log.desc.replace(/Neelam Chowk Path/g, `${road} Path`);
     }
-  });
-
+  }
   
   refreshApp();
 }
 
-
-/**
- * Leaflet Maps Initializer
- * Renders the dashboard leaflet minimap and the primary interactive leaflet map
- * with openstreetmap tile layers.
- */
+// Initialize Leaflet maps with Google Maps tile layers
 function setupLeaflet() {
-  
   const googleRoadTiles = 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
   const tileOptions = {
     maxZoom: 20,
@@ -684,10 +582,9 @@ function setupLeaflet() {
     attribution: 'Map data &copy; <a href="https://www.google.com/maps">Google Maps</a>'
   };
 
-  
   const dashboardMapEl = document.getElementById('dashboard-map');
   if (dashboardMapEl) {
-    miniMap = L.map('dashboard-map', {
+    dashboardMap = L.map('dashboard-map', {
       zoomControl: false,
       dragging: false,
       touchZoom: false,
@@ -696,31 +593,28 @@ function setupLeaflet() {
       boxZoom: false
     }).setView(myLoc, 13);
 
-    L.tileLayer(googleRoadTiles, tileOptions).addTo(miniMap);
+    L.tileLayer(googleRoadTiles, tileOptions).addTo(dashboardMap);
   }
 
-  
   const interactiveMapEl = document.getElementById('interactive-map');
   if (interactiveMapEl) {
-    bigMap = L.map('interactive-map', {
+    interactiveMap = L.map('interactive-map', {
       zoomControl: false
     }).setView(myLoc, feedState.zoomLevel);
 
-    L.tileLayer(googleRoadTiles, tileOptions).addTo(bigMap);
+    L.tileLayer(googleRoadTiles, tileOptions).addTo(interactiveMap);
   }
 }
 
 function setNewIssuePlacementMarker(lat, lng, showToast = false, panMap = true) {
-  
   const latField = document.getElementById('issue-lat');
   const lngField = document.getElementById('issue-lng');
   if (latField) latField.value = lat.toFixed(5);
   if (lngField) lngField.value = lng.toFixed(5);
 
-  
-  if (bigMap) {
-    if (placementMarker) {
-      placementMarker.setLatLng([lat, lng]);
+  if (interactiveMap) {
+    if (draftMarker) {
+      draftMarker.setLatLng([lat, lng]);
     } else {
       const placementIcon = L.divIcon({
         className: 'custom-leaflet-marker',
@@ -728,16 +622,15 @@ function setNewIssuePlacementMarker(lat, lng, showToast = false, panMap = true) 
         iconSize: [28, 40],
         iconAnchor: [6, 6]
       });
-      placementMarker = L.marker([lat, lng], { icon: placementIcon }).addTo(bigMap);
+      draftMarker = L.marker([lat, lng], { icon: placementIcon }).addTo(interactiveMap);
     }
 
     if (panMap) {
-      bigMap.setView([lat, lng], 15);
+      interactiveMap.setView([lat, lng], 15);
     }
   }
 
   if (showToast) {
-    
     const msg = document.createElement('div');
     msg.style.position = 'absolute';
     msg.style.bottom = '80px';
@@ -760,19 +653,17 @@ function setNewIssuePlacementMarker(lat, lng, showToast = false, panMap = true) 
   }
 }
 
-
 function setupNavigation() {
   const navLinks = document.querySelectorAll('.nav-link');
   
-  navLinks.forEach(link => {
+  for (const link of navLinks) {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       const target = link.getAttribute('data-target');
       switchTab(target);
     });
-  });
+  }
 
-  
   const logoTrigger = document.getElementById('logo-trigger');
   if (logoTrigger) {
     logoTrigger.addEventListener('click', () => {
@@ -780,7 +671,6 @@ function setupNavigation() {
     });
   }
 
-  
   const profileBtn = document.getElementById('profile-btn');
   if (profileBtn) {
     profileBtn.addEventListener('click', () => {
@@ -788,7 +678,6 @@ function setupNavigation() {
     });
   }
 
-  
   const minimap = document.getElementById('dashboard-map');
   if (minimap) {
     minimap.addEventListener('click', () => {
@@ -796,7 +685,6 @@ function setupNavigation() {
     });
   }
 
-  
   const reportRedirect = document.getElementById('btn-report-redirect');
   if (reportRedirect) {
     reportRedirect.addEventListener('click', (e) => {
@@ -809,44 +697,38 @@ function setupNavigation() {
 function switchTab(targetTabId) {
   feedState.activeTab = targetTabId;
   
-  
-  document.querySelectorAll('.nav-link').forEach(link => {
+  const navLinks = document.querySelectorAll('.nav-link');
+  for (const link of navLinks) {
     if (link.getAttribute('data-target') === targetTabId) {
       link.classList.add('active');
     } else {
       link.classList.remove('active');
     }
-  });
+  }
 
-  
-  document.querySelectorAll('.page-view').forEach(view => {
+  const views = document.querySelectorAll('.page-view');
+  for (const view of views) {
     if (view.id === `view-${targetTabId}`) {
       view.classList.add('active');
     } else {
       view.classList.remove('active');
     }
-  });
+  }
 
-  
-  if (targetTabId === 'map' && bigMap) {
+  if (targetTabId === 'map' && interactiveMap) {
     setTimeout(() => {
-      bigMap.invalidateSize();
+      interactiveMap.invalidateSize();
       redrawMarkers();
     }, 100);
-  } else if (targetTabId === 'dashboard' && miniMap) {
+  } else if (targetTabId === 'dashboard' && dashboardMap) {
     setTimeout(() => {
-      miniMap.invalidateSize();
+      dashboardMap.invalidateSize();
       redrawMarkers();
     }, 100);
   }
 }
 
-
-/**
- * Report Submission Form Handler
- * Validates report inputs, processes drag-and-drop screenshot attachments to Base64,
- * pushes new records to state, and handles local storage persistence.
- */
+// Handle report form submission and file drop zone
 function bindFormSubmit() {
   const form = document.getElementById('issue-report-form');
   const cancelBtn = document.getElementById('btn-cancel-report');
@@ -855,20 +737,21 @@ function bindFormSubmit() {
   const filePreview = document.getElementById('file-upload-preview');
 
   if (dropZone) {
-    
-    ['dragenter', 'dragover'].forEach(name => {
+    const dragEvents = ['dragenter', 'dragover'];
+    for (const name of dragEvents) {
       dropZone.addEventListener(name, (e) => {
         e.preventDefault();
         dropZone.classList.add('drag-over');
       });
-    });
+    }
 
-    ['dragleave', 'drop'].forEach(name => {
+    const leaveEvents = ['dragleave', 'drop'];
+    for (const name of leaveEvents) {
       dropZone.addEventListener(name, (e) => {
         e.preventDefault();
         dropZone.classList.remove('drag-over');
       });
-    });
+    }
 
     dropZone.addEventListener('click', () => {
       if (fileInput) fileInput.click();
@@ -914,16 +797,15 @@ function bindFormSubmit() {
       if (form) form.reset();
       if (filePreview) filePreview.style.display = 'none';
       uploadedImageBase64 = null;
-      if (placementMarker && bigMap) {
-        bigMap.removeLayer(placementMarker);
-        placementMarker = null;
+      if (draftMarker && interactiveMap) {
+        interactiveMap.removeLayer(draftMarker);
+        draftMarker = null;
       }
       setDefaultFormCoordinates();
       switchTab('dashboard');
     });
   }
 
-  
   if (form) {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -934,7 +816,6 @@ function bindFormSubmit() {
       const description = document.getElementById('issue-description').value || 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
       const lat = parseFloat(document.getElementById('issue-lat').value);
       const lng = parseFloat(document.getElementById('issue-lng').value);
-      
       
       const newId = String(Math.floor(1000 + Math.random() * 9000));
 
@@ -955,11 +836,9 @@ function bindFormSubmit() {
         ]
       };
 
-      
-      usrList.unshift(newIssue);
-      localStorage.setItem('community_custom_issues', JSON.stringify(usrList));
+      customIssues.unshift(newIssue);
+      localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
 
-      
       const newLog = {
         id: `log-${Date.now()}`,
         location: location,
@@ -968,65 +847,56 @@ function bindFormSubmit() {
         tag: 'NEW',
         type: 'new'
       };
-      usrLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(usrLogs));
+      customLogs.unshift(newLog);
+      localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
 
-      
       feedState.issues.unshift(newIssue);
       feedState.selectedIssueId = newId;
       feedLogs.unshift(newLog);
 
-      
       form.reset();
       if (filePreview) filePreview.style.display = 'none';
       uploadedImageBase64 = null;
-      if (placementMarker && bigMap) {
-        bigMap.removeLayer(placementMarker);
-        placementMarker = null;
+      if (draftMarker && interactiveMap) {
+        interactiveMap.removeLayer(draftMarker);
+        draftMarker = null;
       }
       setDefaultFormCoordinates();
 
-      
       refreshApp();
       switchTab('dashboard');
     });
   }
 }
 
-
-/**
- * Map Interactions Controller
- * Binds the 'Locate Me' floating action button to re-center maps on the user's GPS point.
- */
+// Bind map zoom and center-me buttons
 function initButtons() {
   const zoomInBtn = document.getElementById('zoom-in');
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', () => {
-      if (bigMap) bigMap.zoomIn();
+      if (interactiveMap) interactiveMap.zoomIn();
     });
   }
 
   const zoomOutBtn = document.getElementById('zoom-out');
   if (zoomOutBtn) {
     zoomOutBtn.addEventListener('click', () => {
-      if (bigMap) bigMap.zoomOut();
+      if (interactiveMap) interactiveMap.zoomOut();
     });
   }
 
   const zoomResetBtn = document.getElementById('zoom-reset');
   if (zoomResetBtn) {
     zoomResetBtn.addEventListener('click', () => {
-      if (bigMap) bigMap.setView(myLoc, 14);
+      if (interactiveMap) interactiveMap.setView(myLoc, 14);
     });
   }
 
-  
   const locateMeBtn = document.getElementById('btn-locate-me');
   if (locateMeBtn) {
     locateMeBtn.addEventListener('click', () => {
-      if (bigMap && myLoc) {
-        bigMap.setView(myLoc, 15);
-        
+      if (interactiveMap && myLoc) {
+        interactiveMap.setView(myLoc, 15);
         locateMeBtn.textContent = "[ Centered! ]";
         setTimeout(() => {
           locateMeBtn.textContent = "[ Locate Me ]";
@@ -1036,22 +906,14 @@ function initButtons() {
   }
 }
 
-
-/**
- * Search & Filters Coordinator
- * Manages event listeners for global search input suggestions, status badges dropdowns,
- * category dropdowns, and file export actions.
- */
+// Bind search filter inputs, dropdowns, and CSV export
 function initSearch() {
-  
   const searchInput = document.getElementById('global-search');
   const searchDropdown = document.getElementById('search-suggestions-dropdown');
   if (searchInput && searchDropdown) {
     searchInput.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase().trim();
       feedState.searchQuery = query;
-      
-      
       drawTable();
 
       if (!query) {
@@ -1060,12 +922,11 @@ function initSearch() {
         return;
       }
 
-      
       const matches = feedState.issues.filter(issue => 
-        issue.title.toLowerCase().includes(query) || 
-        issue.description.toLowerCase().includes(query) || 
-        issue.location.toLowerCase().includes(query) || 
-        issue.id.includes(query)
+        issue.title.toLowerCase().indexOf(query) !== -1 || 
+        issue.description.toLowerCase().indexOf(query) !== -1 || 
+        issue.location.toLowerCase().indexOf(query) !== -1 || 
+        issue.id.indexOf(query) !== -1
       );
 
       if (matches.length === 0) {
@@ -1079,7 +940,7 @@ function initSearch() {
       }
 
       searchDropdown.innerHTML = '';
-      matches.forEach(issue => {
+      for (const issue of matches) {
         const item = document.createElement('div');
         item.className = 'autocomplete-item';
         item.style.padding = '8px 12px';
@@ -1098,21 +959,16 @@ function initSearch() {
           searchInput.value = issue.title;
           feedState.searchQuery = '';
           searchDropdown.style.display = 'none';
-          
-          
           feedState.selectedIssueId = issue.id;
           switchTab('map');
-          
-          
           drawTable();
         });
 
         searchDropdown.appendChild(item);
-      });
+      }
       searchDropdown.style.display = 'block';
     });
 
-    
     document.addEventListener('click', (e) => {
       if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
         searchDropdown.style.display = 'none';
@@ -1120,35 +976,27 @@ function initSearch() {
     });
   }
 
-  
   const filterStatus = document.getElementById('table-filter-status');
   if (filterStatus) {
-    filterStatus.addEventListener('change', () => {
-      drawTable();
-    });
+    filterStatus.addEventListener('change', drawTable);
   }
 
   const filterCategory = document.getElementById('table-filter-category');
   if (filterCategory) {
-    filterCategory.addEventListener('change', () => {
-      drawTable();
-    });
+    filterCategory.addEventListener('change', drawTable);
   }
 
-  
   const exportBtn = document.getElementById('btn-export-issues');
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-      
-      const escapeCSV = (str) => {
+      function escapeCSV(str) {
         if (str === undefined || str === null) return '';
         let val = String(str);
-        
-        if (val.includes('"') || val.includes(',') || val.includes('\n') || val.includes('\r')) {
+        if (val.indexOf('"') !== -1 || val.indexOf(',') !== -1 || val.indexOf('\n') !== -1 || val.indexOf('\r') !== -1) {
           val = '"' + val.replace(/"/g, '""') + '"';
         }
         return val;
-      };
+      }
 
       const headers = [
         'ID', 'Category', 'Title', 'Location', 'Latitude', 'Longitude', 
@@ -1174,7 +1022,6 @@ function initSearch() {
         ].join(',');
       });
 
-      
       const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -1188,40 +1035,31 @@ function initSearch() {
     });
   }
 
-  
   const activityTabs = document.querySelectorAll('#view-activity .btn-tab-filter');
-  activityTabs.forEach(tab => {
+  for (const tab of activityTabs) {
     tab.addEventListener('click', () => {
-      activityTabs.forEach(t => t.classList.remove('active'));
+      for (const t of activityTabs) {
+        t.classList.remove('active');
+      }
       tab.classList.add('active');
       feedState.activityFilter = tab.getAttribute('data-filter');
       drawActivityLog();
     });
-  });
+  }
 }
 
-
-/**
- * Master UI Coordinator
- * Forces updates across all dynamic UI widgets: metrics, tables, sidebars, activity, and maps.
- */
+// Refresh all UI widgets, lists, maps, and stats
 function refreshApp() {
   updateMetrics();
   drawTable();
   drawSidebar();
-  drawActivityLog();
   drawProfileTab();
+  drawActivityLog();
   redrawMarkers();
 }
 
-
-/**
- * System Metrics Calculator
- * Re-evaluates state issues list and updates Total Reports, Open, Pending,
- * and Resolved statistics counts in the sidebar widget.
- */
+// Update profile/system statistics panels
 function updateMetrics() {
-  
   const userReported = feedState.issues.filter(i => i.reporter === 'Resident User #402').length;
   const userResolved = feedState.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
 
@@ -1231,7 +1069,6 @@ function updateMetrics() {
   const resolvedEl = document.getElementById('profile-resolved-count');
   if (resolvedEl) resolvedEl.textContent = userResolved;
 
-  
   const totalReports = feedState.issues.length;
   const resolvedReports = feedState.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
   const openReports = feedState.issues.filter(i => i.status === 'OPEN').length;
@@ -1250,31 +1087,22 @@ function updateMetrics() {
   if (pendingEl) pendingEl.textContent = pendingReports;
 }
 
-
-/**
- * CSS Badging Helper
- * Maps status string values to appropriate grayscale wireframe status badge classes.
- */
+// Status to CSS badge class mapping
 function getBadgeStyle(status) {
   var stat = status.toUpperCase();
-  if (stat == 'OPEN') {
+  if (stat === 'OPEN') {
      return "badge-open";
-  } else if (stat == 'PENDING') {
+  } else if (stat === 'PENDING') {
      return 'badge-pending';
-  } else if (stat == 'CLOSED') {
+  } else if (stat === 'CLOSED') {
      return "badge-closed";
-  } else if (stat == 'RESOLVED') {
+  } else if (stat === 'RESOLVED') {
      return "badge-resolved";
   }
   return "badge-open";
 }
 
-
-/**
- * Database Filtering Engine
- * Filters the primary issues array based on active search bar queries,
- * selected category dropdown options, and selected status options.
- */
+// Filter issues array by status, category, and search query
 function filterTable() {
   const statusFilterEl = document.getElementById('table-filter-status');
   const categoryFilterEl = document.getElementById('table-filter-category');
@@ -1284,9 +1112,9 @@ function filterTable() {
 
   return feedState.issues.filter(issue => {
     const matchesSearch = 
-      issue.id.includes(feedState.searchQuery) ||
-      issue.title.toLowerCase().includes(feedState.searchQuery) ||
-      issue.location.toLowerCase().includes(feedState.searchQuery);
+      issue.id.indexOf(feedState.searchQuery) !== -1 ||
+      issue.title.toLowerCase().indexOf(feedState.searchQuery) !== -1 ||
+      issue.location.toLowerCase().indexOf(feedState.searchQuery) !== -1;
     
     const matchesStatus = (statusFilter === 'all') || (issue.status === statusFilter);
     const matchesCategory = (categoryFilter === 'all') || (issue.category === categoryFilter);
@@ -1295,12 +1123,7 @@ function filterTable() {
   });
 }
 
-
-/**
- * Issues Data Table Renderer
- * Translates filtered issues array into table rows. Displays grayscale status badges,
- * and appends map-pin toggle buttons next to badges for expired resolutions.
- */
+// Render reported issues table rows
 function drawTable() {
   const tbody = document.getElementById('issues-table-body');
   if (!tbody) return;
@@ -1313,7 +1136,7 @@ function drawTable() {
     return;
   }
 
-  filtered.forEach(issue => {
+  for (const issue of filtered) {
     const isResolvedOrClosed = issue.status === 'RESOLVED' || issue.status === 'CLOSED';
     let isOlderThan5Days = false;
     if (isResolvedOrClosed && issue.resolvedDate) {
@@ -1322,7 +1145,7 @@ function drawTable() {
       const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
       isOlderThan5Days = diffDays > 5;
     }
-    const hasPin = feedState.forcedHistoryPins && feedState.forcedHistoryPins.includes(issue.id);
+    const hasPin = feedState.forcedHistoryPins && feedState.forcedHistoryPins.indexOf(issue.id) !== -1;
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1342,7 +1165,6 @@ function drawTable() {
       </td>
     `;
 
-    
     const cell = tr.querySelector('.issue-id-cell');
     if (cell) {
       cell.addEventListener('click', () => {
@@ -1351,7 +1173,6 @@ function drawTable() {
       });
     }
 
-    
     if (isOlderThan5Days) {
       const pinBtn = tr.querySelector('.btn-toggle-table-pin');
       if (pinBtn) {
@@ -1375,26 +1196,20 @@ function drawTable() {
     }
 
     tbody.appendChild(tr);
-  });
+  }
 }
 
-
-/**
- * Active Issues Sidebar Feed
- * Displays only unresolved open or pending issues in the dashboard sidebar panel,
- * hiding resolved/closed complaints.
- */
+// Draw unresolved issues in the active issues feed
 function drawSidebar() {
   const listContainer = document.getElementById('active-issues-list');
   if (!listContainer) return;
 
   listContainer.innerHTML = '';
-
   let activeCount = 0;
 
-  feedState.issues.forEach(issue => {
+  for (const issue of feedState.issues) {
     if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') {
-      return; 
+      continue; 
     }
     activeCount++;
 
@@ -1423,18 +1238,14 @@ function drawSidebar() {
     });
 
     listContainer.appendChild(item);
-  });
+  }
 
   if (activeCount === 0) {
     listContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">No active issues to display.</div>';
   }
 }
 
-
-/**
- * User Profile Reports Feed
- * Populates the resident user profile tab with a list of complaints filed by the current user.
- */
+// Draw issues reported by this specific resident user
 function drawProfileTab() {
   const container = document.getElementById('profile-issues-list');
   if (!container) return;
@@ -1447,7 +1258,7 @@ function drawProfileTab() {
     return;
   }
 
-  userIssues.forEach(issue => {
+  for (const issue of userIssues) {
     const card = document.createElement('div');
     card.className = 'sidebar-item';
     card.style.display = 'flex';
@@ -1477,14 +1288,10 @@ function drawProfileTab() {
     });
 
     container.appendChild(card);
-  });
+  }
 }
 
-
-/**
- * Live Activity Feed Renderer
- * Updates the public actions log with administrative and citizen activity updates.
- */
+// Render the community activity feed
 function drawActivityLog() {
   const container = document.getElementById('activity-feed-list');
   if (!container) return;
@@ -1501,12 +1308,11 @@ function drawActivityLog() {
     return;
   }
 
-  filtered.forEach(log => {
+  for (const log of filtered) {
     const card = document.createElement('div');
     card.className = 'card activity-card';
     
     let iconHTML = '';
-    
     if (log.type === 'resolved') {
       iconHTML = '<i class="ti ti-check" style="font-weight: bold; color: #4b5563;"></i>';
     } else if (log.type === 'update') {
@@ -1541,28 +1347,19 @@ function drawActivityLog() {
     }
 
     container.appendChild(card);
-  });
+  }
 }
 
-
-/**
- * Leaflet Maps Synchronizer
- * Re-draws all map markers and updates details tracking panels.
- */
+// Redraw map pins and detail panel
 function redrawMarkers() {
-  if (!miniMap || !bigMap) return;
+  if (!dashboardMap || !interactiveMap) return;
   drawPins();
   drawDetailsPanel();
 }
 
-
-/**
- * Incident Pin Expiration Filter
- * Prevents map clutter by hiding resolved/closed pins older than 5 days.
- * Allows overrides if issue is manually toggled active via the history pin button.
- */
+// Hide resolved pins older than 5 days unless explicitly forced to display
 function isPinVisible(issue) {
-  var is_resolved = (issue.status == 'RESOLVED' || issue.status == 'CLOSED');
+  var is_resolved = (issue.status === 'RESOLVED' || issue.status === 'CLOSED');
   if (!is_resolved) {
     return true; 
   }
@@ -1583,31 +1380,27 @@ function isPinVisible(issue) {
   return false;
 }
 
-/**
- * Incident Markers Painter
- * Clears old leaflet markers and draws active, pending, resolved, and manually-forced
- * history pins on both maps.
- */
+// Draw pins for visible issues and user location on both maps
 function drawPins() {
+  for (const m of dashboardMarkers) {
+    dashboardMap.removeLayer(m);
+  }
+  for (const m of interactiveMarkers) {
+    interactiveMap.removeLayer(m);
+  }
   
-  miniPins.forEach(m => miniMap.removeLayer(m));
-  bigPins.forEach(m => bigMap.removeLayer(m));
-  
-  miniPins = [];
-  bigPins = [];
+  dashboardMarkers = [];
+  interactiveMarkers = [];
 
-  feedState.issues.forEach(issue => {
-    
+  for (const issue of feedState.issues) {
     if (!isPinVisible(issue)) {
-      return;
+      continue;
     }
 
-    
     let pinType = 'active-new';
     if (issue.status === 'IN PROGRESS') pinType = 'in-progress';
     else if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') pinType = 'resolved';
 
-    
     const customIcon = L.divIcon({
       className: 'custom-leaflet-marker',
       html: `<div class="marker-pin ${pinType}"></div><div class="marker-label">#${issue.id}:<br>${issue.title.split(' ')[0]}</div>`,
@@ -1622,32 +1415,28 @@ function drawPins() {
       iconAnchor: [7, 7]
     });
 
-    
-    if (bigMap) {
+    if (interactiveMap) {
       const marker = L.marker([issue.coordinates.lat, issue.coordinates.lng], { icon: customIcon })
-        .addTo(bigMap);
-      
+        .addTo(interactiveMap);
       
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
         feedState.selectedIssueId = issue.id;
-        bigMap.setView([issue.coordinates.lat, issue.coordinates.lng], 16);
+        interactiveMap.setView([issue.coordinates.lat, issue.coordinates.lng], 16);
         drawDetailsPanel();
       });
 
-      bigPins.push(marker);
+      interactiveMarkers.push(marker);
     }
 
-    
-    if (miniMap) {
+    if (dashboardMap) {
       const marker = L.marker([issue.coordinates.lat, issue.coordinates.lng], { icon: miniIcon })
-        .addTo(miniMap);
+        .addTo(dashboardMap);
       
-      miniPins.push(marker);
+      dashboardMarkers.push(marker);
     }
-  });
+  }
 
-  
   if (myLoc) {
     const userLocationIcon = L.divIcon({
       className: 'custom-leaflet-marker user-location-marker-container',
@@ -1663,34 +1452,28 @@ function drawPins() {
       iconAnchor: [7, 7]
     });
 
-    if (bigMap) {
+    if (interactiveMap) {
       const userMarker = L.marker(myLoc, { icon: userLocationIcon })
-        .addTo(bigMap);
-      bigPins.push(userMarker);
+        .addTo(interactiveMap);
+      interactiveMarkers.push(userMarker);
     }
 
-    if (miniMap) {
+    if (dashboardMap) {
       const userMiniMarker = L.marker(myLoc, { icon: userLocationMiniIcon })
-        .addTo(miniMap);
-      miniPins.push(userMiniMarker);
+        .addTo(dashboardMap);
+      dashboardMarkers.push(userMiniMarker);
     }
   }
 
-  
   if (feedState.activeTab === 'map' && feedState.selectedIssueId) {
     const selected = feedState.issues.find(i => i.id === feedState.selectedIssueId);
-    if (selected && bigMap) {
-      bigMap.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
+    if (selected && interactiveMap) {
+      interactiveMap.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
     }
   }
 }
 
-
-/**
- * Tracking Details Panel Controller
- * Renders timelines, screenshots, upvotes, resolve options, and history map-pin toggles
- * for the selected incident pin.
- */
+// Render details pane for selected issue
 function drawDetailsPanel() {
   const panel = document.getElementById('tracking-detail-panel');
   if (!panel) return;
@@ -1708,9 +1491,9 @@ function drawDetailsPanel() {
     return;
   }
 
-  
   let timelineStepsHTML = '';
-  issue.timeline.forEach((step, index) => {
+  for (let index = 0; index < issue.timeline.length; index++) {
+    const step = issue.timeline[index];
     const isCompleted = step.complete;
     const dotClass = isCompleted ? (issue.status === 'IN PROGRESS' && index === 1 ? 'in-progress' : 'complete') : 'pending';
     const titleClass = isCompleted ? '' : 'pending';
@@ -1724,7 +1507,7 @@ function drawDetailsPanel() {
         </div>
       </div>
     `;
-  });
+  }
 
   panel.innerHTML = `
     <h2 style="font-size: 15px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Tracking Details: ${issue.title}</h2>
@@ -1780,32 +1563,26 @@ function drawDetailsPanel() {
     })()}
   `;
 
-  
   const upvoteBtn = document.getElementById('btn-upvote-issue');
   if (upvoteBtn) {
     upvoteBtn.addEventListener('click', () => {
-      
       issue.upvotes = (issue.upvotes || 0) + 1;
-      
       
       const countEl = document.getElementById('issue-upvotes-count');
       if (countEl) countEl.textContent = issue.upvotes;
       
-      
       upvoteBtn.disabled = true;
       upvoteBtn.textContent = 'Upvoted';
 
-      
       if (!feedState.upvotedIssues.includes(issue.id)) {
         feedState.upvotedIssues.push(issue.id);
         localStorage.setItem('community_upvoted_issues', JSON.stringify(feedState.upvotedIssues));
       }
 
-      
-      const customIdx = usrList.findIndex(i => i.id === issue.id);
+      const customIdx = customIssues.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
-        usrList[customIdx].upvotes = issue.upvotes;
-        localStorage.setItem('community_custom_issues', JSON.stringify(usrList));
+        customIssues[customIdx].upvotes = issue.upvotes;
+        localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
       } else {
         const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
         defaultIssuesUpvotes[issue.id] = (defaultIssuesUpvotes[issue.id] || 0) + 1;
@@ -1821,8 +1598,8 @@ function drawDetailsPanel() {
         type: 'update'
       };
       feedLogs.unshift(newLog);
-      usrLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(usrLogs));
+      customLogs.unshift(newLog);
+      localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
       refreshApp();
     });
   }
@@ -1830,7 +1607,6 @@ function drawDetailsPanel() {
   const resolveBtn = document.getElementById('btn-resolve-issue-mock');
   if (resolveBtn) {
     resolveBtn.addEventListener('click', () => {
-      
       issue.status = 'RESOLVED';
       issue.resolvedDate = new Date().toISOString();
       issue.timeline.push({
@@ -1849,17 +1625,16 @@ function drawDetailsPanel() {
       };
       feedLogs.unshift(newLog);
 
-      
-      const customIdx = usrList.findIndex(i => i.id === issue.id);
+      const customIdx = customIssues.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
-        usrList[customIdx].status = 'RESOLVED';
-        usrList[customIdx].resolvedDate = issue.resolvedDate;
-        usrList[customIdx].timeline = issue.timeline;
-        localStorage.setItem('community_custom_issues', JSON.stringify(usrList));
+        customIssues[customIdx].status = 'RESOLVED';
+        customIssues[customIdx].resolvedDate = issue.resolvedDate;
+        customIssues[customIdx].timeline = issue.timeline;
+        localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
       }
 
-      usrLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(usrLogs));
+      customLogs.unshift(newLog);
+      localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
 
       refreshApp();
     });
@@ -1884,11 +1659,7 @@ function drawDetailsPanel() {
   }
 }
 
-
-/**
- * Storage Schema Migrator
- * Automatically maps and cleans up legacy storage keys on startup to ensure user data continuity.
- */
+// Migrate old localStorage keys to new ones
 function migrateLegacyStorage() {
   console.log("Running local storage naming migration checks...");
   const legacyKeys = {
