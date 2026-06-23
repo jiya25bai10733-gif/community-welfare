@@ -1,5 +1,5 @@
 
-const cwState = {
+const appState = {
   activeTab: 'dashboard',
   issues: [
     {
@@ -102,7 +102,7 @@ const cwState = {
 };
 
 
-let cwActivityLogs = [
+let activityLogs = [
   {
     id: 'log-1',
     location: 'Sector 12 Market',
@@ -146,47 +146,48 @@ let cwActivityLogs = [
 ];
 
 
-let cwDashboardMap = null;
-let cwMainMap = null;
+let dashboardMap = null;
+let mainMap = null;
 
 
-let cwDashboardMarkers = [];
-let cwMainMarkers = [];
+let dashboardMarkers = [];
+let mapMarkers = [];
 let placementMarker = null;
 
-let cwDetectedCenter = [28.4089, 77.3178]; 
+let detectedCenter = [28.4089, 77.3178]; 
 
 
-let cwCustomIssues = [];
-let cwCustomLogs = [];
+let customIssues = [];
+let customLogs = [];
 let uploadedImageBase64 = null;
 
 
 document.addEventListener('DOMContentLoaded', () => {
-  cwLoadPersistedData();
-  cwSetupConnectionStatus();
+  migrateLegacyStorage();
+  loadPersistedData();
+  setupConnectionStatus();
   setDefaultFormCoordinates();
   setupNavigation();
-  cwSetupFormHandlers();
-  cwSetupFiltersAndSearch();
-  cwSetupMapControls();
-  cwInitMaps();
-  cwDetectLocationAndInit();
-  cwSetupLocationAutocomplete();
-  cwRenderApp();
+  setupIssueFormHandlers();
+  setupFiltersAndSearch();
+  setupMapControls();
+  initMaps();
+  detectAndInitLocation();
+  setupLocationAutocomplete();
+  renderAppUI();
 });
 
 
-function cwLoadPersistedData() {
+function loadPersistedData() {
   try {
-    cwCustomIssues = JSON.parse(localStorage.getItem('community_custom_issues')) || [];
-    cwCustomLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
-    cwState.upvotedIssues = JSON.parse(localStorage.getItem('community_upvoted_issues')) || [];
-    cwState.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
+    customIssues = JSON.parse(localStorage.getItem('community_custom_issues')) || [];
+    customLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
+    appState.upvotedIssues = JSON.parse(localStorage.getItem('community_upvoted_issues')) || [];
+    appState.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
     
     
     const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
-    cwState.issues.forEach(issue => {
+    appState.issues.forEach(issue => {
       if (defaultIssuesUpvotes[issue.id]) {
         issue.upvotes = (issue.upvotes || 0) + defaultIssuesUpvotes[issue.id];
       }
@@ -196,14 +197,14 @@ function cwLoadPersistedData() {
   }
 
   
-  cwState.issues = [...cwCustomIssues, ...cwState.issues];
+  appState.issues = [...customIssues, ...appState.issues];
   
   
-  cwActivityLogs = [...cwCustomLogs, ...cwActivityLogs];
+  activityLogs = [...customLogs, ...activityLogs];
 }
 
 
-function cwSetupConnectionStatus() {
+function setupConnectionStatus() {
   const statusEl = document.getElementById('connection-status');
   if (!statusEl) return;
 
@@ -232,14 +233,14 @@ function cwSetupConnectionStatus() {
 function setDefaultFormCoordinates() {
   const latField = document.getElementById('issue-lat');
   const lngField = document.getElementById('issue-lng');
-  if (latField) latField.value = cwDetectedCenter[0].toFixed(5);
-  if (lngField) lngField.value = cwDetectedCenter[1].toFixed(5);
+  if (latField) latField.value = detectedCenter[0].toFixed(5);
+  if (lngField) lngField.value = detectedCenter[1].toFixed(5);
 }
 
 
 let autocompleteTimeout = null;
 
-function cwSetupLocationAutocomplete() {
+function setupLocationAutocomplete() {
   const inputEl = document.getElementById('issue-location');
   const dropdownEl = document.getElementById('location-autocomplete-dropdown');
   if (!inputEl || !dropdownEl) return;
@@ -257,8 +258,8 @@ function cwSetupLocationAutocomplete() {
     
     autocompleteTimeout = setTimeout(() => {
       let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=5`;
-      if (cwDetectedCenter && cwDetectedCenter.length === 2) {
-        url += `&lat=${cwDetectedCenter[0]}&lon=${cwDetectedCenter[1]}`;
+      if (detectedCenter && detectedCenter.length === 2) {
+        url += `&lat=${detectedCenter[0]}&lon=${detectedCenter[1]}`;
       }
 
       fetch(url)
@@ -308,8 +309,8 @@ function cwSetupLocationAutocomplete() {
       if (val.length < 3) return;
 
       let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=1`;
-      if (cwDetectedCenter && cwDetectedCenter.length === 2) {
-        url += `&lat=${cwDetectedCenter[0]}&lon=${cwDetectedCenter[1]}`;
+      if (detectedCenter && detectedCenter.length === 2) {
+        url += `&lat=${detectedCenter[0]}&lon=${detectedCenter[1]}`;
       }
 
       fetch(url)
@@ -349,8 +350,8 @@ function cwSetupLocationAutocomplete() {
         e.preventDefault(); 
         
         let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=1`;
-        if (cwDetectedCenter && cwDetectedCenter.length === 2) {
-          url += `&lat=${cwDetectedCenter[0]}&lon=${cwDetectedCenter[1]}`;
+        if (detectedCenter && detectedCenter.length === 2) {
+          url += `&lat=${detectedCenter[0]}&lon=${detectedCenter[1]}`;
         }
 
         fetch(url)
@@ -400,7 +401,7 @@ function renderAutocompleteResults(features, inputEl, dropdownEl) {
     if (p.locality) parts.push(p.locality);
     if (p.district) parts.push(p.district);
     if (p.city && p.city !== p.name) parts.push(p.city);
-    if (p.cwState) parts.push(p.cwState);
+    if (p.appState) parts.push(p.appState);
     if (p.country && p.country !== p.name) parts.push(p.country);
     
     const formattedAddress = parts.join(', ');
@@ -436,12 +437,12 @@ function renderAutocompleteResults(features, inputEl, dropdownEl) {
 }
 
 
-function cwDetectLocationAndInit() {
+function detectAndInitLocation() {
   console.log("Tracking location...");
   
   if (!navigator.geolocation) {
     console.warn("Geolocation is not supported by this browser. Falling back to Faridabad.");
-    cwInitFallbackLocation();
+    initFallbackLocation();
     return;
   }
 
@@ -457,23 +458,23 @@ function cwDetectLocationAndInit() {
       const lng = position.coords.longitude;
       console.log(`Location detected: ${lat}, ${lng}`);
       
-      cwDetectedCenter = [lat, lng];
+      detectedCenter = [lat, lng];
       
       
       setDefaultFormCoordinates();
       
       
-      cwUpdateIssuesCoordinates(lat, lng);
+      updateIssueCoordinatesRelativeTo(lat, lng);
       
       
-      cwRecenterMaps(lat, lng);
+      recenterMapsTo(lat, lng);
       
       
-      cwFetchReverseGeocode(lat, lng);
+      fetchReverseGeocodeFor(lat, lng);
     },
     (error) => {
       console.warn(`Geolocation failed/denied (Code ${error.code}): ${error.message}. Falling back to Faridabad.`);
-      cwInitFallbackLocation();
+      initFallbackLocation();
     },
     {
       enableHighAccuracy: true,
@@ -483,18 +484,18 @@ function cwDetectLocationAndInit() {
   );
 }
 
-function cwInitFallbackLocation() {
+function initFallbackLocation() {
   
-  cwDetectedCenter = [28.4089, 77.3178];
+  detectedCenter = [28.4089, 77.3178];
   setDefaultFormCoordinates();
-  cwUpdateIssuesCoordinates(cwDetectedCenter[0], cwDetectedCenter[1]);
-  cwRecenterMaps(cwDetectedCenter[0], cwDetectedCenter[1]);
+  updateIssueCoordinatesRelativeTo(detectedCenter[0], detectedCenter[1]);
+  recenterMapsTo(detectedCenter[0], detectedCenter[1]);
   
   
-  cwUpdateLocationTexts("Faridabad", "Sector 15", "Mathura Road");
+  updateLocationTexts("Faridabad", "Sector 15", "Mathura Road");
 }
 
-function cwUpdateIssuesCoordinates(lat, lng) {
+function updateIssueCoordinatesRelativeTo(lat, lng) {
   
   const offsets = {
     '1248': { dLat: 0.0061, dLng: -0.0038 },
@@ -504,7 +505,7 @@ function cwUpdateIssuesCoordinates(lat, lng) {
     '1254': { dLat: -0.0109, dLng: 0.0032 }
   };
   
-  cwState.issues.forEach(issue => {
+  appState.issues.forEach(issue => {
     const offset = offsets[issue.id];
     if (offset) {
       issue.coordinates = {
@@ -515,16 +516,16 @@ function cwUpdateIssuesCoordinates(lat, lng) {
   });
 }
 
-function cwRecenterMaps(lat, lng) {
-  if (cwDashboardMap) {
-    cwDashboardMap.setView([lat, lng], 13);
+function recenterMapsTo(lat, lng) {
+  if (dashboardMap) {
+    dashboardMap.setView([lat, lng], 13);
   }
-  if (cwMainMap) {
-    cwMainMap.setView([lat, lng], cwState.zoomLevel);
+  if (mainMap) {
+    mainMap.setView([lat, lng], appState.zoomLevel);
   }
 }
 
-function cwFetchReverseGeocode(lat, lng) {
+function fetchReverseGeocodeFor(lat, lng) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
   
   fetch(url, {
@@ -544,7 +545,7 @@ function cwFetchReverseGeocode(lat, lng) {
       
       console.log(`Reverse geocoded location: ${suburb}, ${city}`);
       
-      cwUpdateLocationTexts(city, suburb, road);
+      updateLocationTexts(city, suburb, road);
     })
     .catch(error => {
       console.error("Reverse geocoding failed:", error);
@@ -552,11 +553,11 @@ function cwFetchReverseGeocode(lat, lng) {
       const city = "Local Area";
       const suburb = `Near ${lat.toFixed(3)}, ${lng.toFixed(3)}`;
       const road = "Main Road";
-      cwUpdateLocationTexts(city, suburb, road);
+      updateLocationTexts(city, suburb, road);
     });
 }
 
-function cwUpdateLocationTexts(city, suburb, road) {
+function updateLocationTexts(city, suburb, road) {
   
   const subtextEl = document.getElementById('dashboard-map-subtext');
   if (subtextEl) {
@@ -570,7 +571,7 @@ function cwUpdateLocationTexts(city, suburb, road) {
   }
   
   
-  cwState.issues.forEach(issue => {
+  appState.issues.forEach(issue => {
     if (issue.id === '1248') {
       issue.location = `${suburb} Market Road`;
     } else if (issue.id === '1245') {
@@ -585,7 +586,7 @@ function cwUpdateLocationTexts(city, suburb, road) {
   });
 
   
-  cwActivityLogs.forEach(log => {
+  activityLogs.forEach(log => {
     if (log.id === 'log-1') {
       log.location = `${suburb} Market`;
       log.desc = log.desc.replace(/Sector 12 Market/g, `${suburb} Market`);
@@ -605,11 +606,11 @@ function cwUpdateLocationTexts(city, suburb, road) {
   });
 
   
-  cwRenderApp();
+  renderAppUI();
 }
 
 
-function cwInitMaps() {
+function initMaps() {
   
   const googleRoadTiles = 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
   const tileOptions = {
@@ -621,26 +622,26 @@ function cwInitMaps() {
   
   const dashboardMapEl = document.getElementById('dashboard-map');
   if (dashboardMapEl) {
-    cwDashboardMap = L.map('dashboard-map', {
+    dashboardMap = L.map('dashboard-map', {
       zoomControl: false,
       dragging: false,
       touchZoom: false,
       scrollWheelZoom: false,
       doubleClickZoom: false,
       boxZoom: false
-    }).setView(cwDetectedCenter, 13);
+    }).setView(detectedCenter, 13);
 
-    L.tileLayer(googleRoadTiles, tileOptions).addTo(cwDashboardMap);
+    L.tileLayer(googleRoadTiles, tileOptions).addTo(dashboardMap);
   }
 
   
   const interactiveMapEl = document.getElementById('interactive-map');
   if (interactiveMapEl) {
-    cwMainMap = L.map('interactive-map', {
+    mainMap = L.map('interactive-map', {
       zoomControl: false
-    }).setView(cwDetectedCenter, cwState.zoomLevel);
+    }).setView(detectedCenter, appState.zoomLevel);
 
-    L.tileLayer(googleRoadTiles, tileOptions).addTo(cwMainMap);
+    L.tileLayer(googleRoadTiles, tileOptions).addTo(mainMap);
   }
 }
 
@@ -652,7 +653,7 @@ function setNewIssuePlacementMarker(lat, lng, showToast = false, panMap = true) 
   if (lngField) lngField.value = lng.toFixed(5);
 
   
-  if (cwMainMap) {
+  if (mainMap) {
     if (placementMarker) {
       placementMarker.setLatLng([lat, lng]);
     } else {
@@ -662,11 +663,11 @@ function setNewIssuePlacementMarker(lat, lng, showToast = false, panMap = true) 
         iconSize: [28, 40],
         iconAnchor: [6, 6]
       });
-      placementMarker = L.marker([lat, lng], { icon: placementIcon }).addTo(cwMainMap);
+      placementMarker = L.marker([lat, lng], { icon: placementIcon }).addTo(mainMap);
     }
 
     if (panMap) {
-      cwMainMap.setView([lat, lng], 15);
+      mainMap.setView([lat, lng], 15);
     }
   }
 
@@ -741,7 +742,7 @@ function setupNavigation() {
 }
 
 function switchTab(targetTabId) {
-  cwState.activeTab = targetTabId;
+  appState.activeTab = targetTabId;
   
   
   document.querySelectorAll('.nav-link').forEach(link => {
@@ -762,21 +763,21 @@ function switchTab(targetTabId) {
   });
 
   
-  if (targetTabId === 'map' && cwMainMap) {
+  if (targetTabId === 'map' && mainMap) {
     setTimeout(() => {
-      cwMainMap.invalidateSize();
-      cwRenderMap();
+      mainMap.invalidateSize();
+      renderMaps();
     }, 100);
-  } else if (targetTabId === 'dashboard' && cwDashboardMap) {
+  } else if (targetTabId === 'dashboard' && dashboardMap) {
     setTimeout(() => {
-      cwDashboardMap.invalidateSize();
-      cwRenderMap();
+      dashboardMap.invalidateSize();
+      renderMaps();
     }, 100);
   }
 }
 
 
-function cwSetupFormHandlers() {
+function setupIssueFormHandlers() {
   const form = document.getElementById('issue-report-form');
   const cancelBtn = document.getElementById('btn-cancel-report');
   const dropZone = document.getElementById('drop-zone');
@@ -843,8 +844,8 @@ function cwSetupFormHandlers() {
       if (form) form.reset();
       if (filePreview) filePreview.style.display = 'none';
       uploadedImageBase64 = null;
-      if (placementMarker && cwMainMap) {
-        cwMainMap.removeLayer(placementMarker);
+      if (placementMarker && mainMap) {
+        mainMap.removeLayer(placementMarker);
         placementMarker = null;
       }
       setDefaultFormCoordinates();
@@ -885,8 +886,8 @@ function cwSetupFormHandlers() {
       };
 
       
-      cwCustomIssues.unshift(newIssue);
-      localStorage.setItem('community_custom_issues', JSON.stringify(cwCustomIssues));
+      customIssues.unshift(newIssue);
+      localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
 
       
       const newLog = {
@@ -897,51 +898,51 @@ function cwSetupFormHandlers() {
         tag: 'NEW',
         type: 'new'
       };
-      cwCustomLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(cwCustomLogs));
+      customLogs.unshift(newLog);
+      localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
 
       
-      cwState.issues.unshift(newIssue);
-      cwState.selectedIssueId = newId;
-      cwActivityLogs.unshift(newLog);
+      appState.issues.unshift(newIssue);
+      appState.selectedIssueId = newId;
+      activityLogs.unshift(newLog);
 
       
       form.reset();
       if (filePreview) filePreview.style.display = 'none';
       uploadedImageBase64 = null;
-      if (placementMarker && cwMainMap) {
-        cwMainMap.removeLayer(placementMarker);
+      if (placementMarker && mainMap) {
+        mainMap.removeLayer(placementMarker);
         placementMarker = null;
       }
       setDefaultFormCoordinates();
 
       
-      cwRenderApp();
+      renderAppUI();
       switchTab('dashboard');
     });
   }
 }
 
 
-function cwSetupMapControls() {
+function setupMapControls() {
   const zoomInBtn = document.getElementById('zoom-in');
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', () => {
-      if (cwMainMap) cwMainMap.zoomIn();
+      if (mainMap) mainMap.zoomIn();
     });
   }
 
   const zoomOutBtn = document.getElementById('zoom-out');
   if (zoomOutBtn) {
     zoomOutBtn.addEventListener('click', () => {
-      if (cwMainMap) cwMainMap.zoomOut();
+      if (mainMap) mainMap.zoomOut();
     });
   }
 
   const zoomResetBtn = document.getElementById('zoom-reset');
   if (zoomResetBtn) {
     zoomResetBtn.addEventListener('click', () => {
-      if (cwMainMap) cwMainMap.setView(cwDetectedCenter, 14);
+      if (mainMap) mainMap.setView(detectedCenter, 14);
     });
   }
 
@@ -949,8 +950,8 @@ function cwSetupMapControls() {
   const locateMeBtn = document.getElementById('btn-locate-me');
   if (locateMeBtn) {
     locateMeBtn.addEventListener('click', () => {
-      if (cwMainMap && cwDetectedCenter) {
-        cwMainMap.setView(cwDetectedCenter, 15);
+      if (mainMap && detectedCenter) {
+        mainMap.setView(detectedCenter, 15);
         
         locateMeBtn.textContent = "[ Centered! ]";
         setTimeout(() => {
@@ -962,17 +963,17 @@ function cwSetupMapControls() {
 }
 
 
-function cwSetupFiltersAndSearch() {
+function setupFiltersAndSearch() {
   
   const searchInput = document.getElementById('global-search');
   const searchDropdown = document.getElementById('search-suggestions-dropdown');
   if (searchInput && searchDropdown) {
     searchInput.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase().trim();
-      cwState.searchQuery = query;
+      appState.searchQuery = query;
       
       
-      cwRenderIssuesTable();
+      renderIssuesTable();
 
       if (!query) {
         searchDropdown.style.display = 'none';
@@ -981,7 +982,7 @@ function cwSetupFiltersAndSearch() {
       }
 
       
-      const matches = cwState.issues.filter(issue => 
+      const matches = appState.issues.filter(issue => 
         issue.title.toLowerCase().includes(query) || 
         issue.description.toLowerCase().includes(query) || 
         issue.location.toLowerCase().includes(query) || 
@@ -1016,15 +1017,15 @@ function cwSetupFiltersAndSearch() {
 
         item.addEventListener('click', () => {
           searchInput.value = issue.title;
-          cwState.searchQuery = '';
+          appState.searchQuery = '';
           searchDropdown.style.display = 'none';
           
           
-          cwState.selectedIssueId = issue.id;
+          appState.selectedIssueId = issue.id;
           switchTab('map');
           
           
-          cwRenderIssuesTable();
+          renderIssuesTable();
         });
 
         searchDropdown.appendChild(item);
@@ -1044,14 +1045,14 @@ function cwSetupFiltersAndSearch() {
   const filterStatus = document.getElementById('table-filter-status');
   if (filterStatus) {
     filterStatus.addEventListener('change', () => {
-      cwRenderIssuesTable();
+      renderIssuesTable();
     });
   }
 
   const filterCategory = document.getElementById('table-filter-category');
   if (filterCategory) {
     filterCategory.addEventListener('change', () => {
-      cwRenderIssuesTable();
+      renderIssuesTable();
     });
   }
 
@@ -1075,7 +1076,7 @@ function cwSetupFiltersAndSearch() {
         'Status', 'Upvotes', 'Reported Date', 'Reported Time', 'Reporter', 'Description'
       ];
 
-      const rows = cwState.issues.map(issue => {
+      const rows = appState.issues.map(issue => {
         const lat = issue.coordinates ? issue.coordinates.lat : '';
         const lng = issue.coordinates ? issue.coordinates.lng : '';
         return [
@@ -1114,27 +1115,27 @@ function cwSetupFiltersAndSearch() {
     tab.addEventListener('click', () => {
       activityTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      cwState.activityFilter = tab.getAttribute('data-filter');
-      cwRenderActivityFeed();
+      appState.activityFilter = tab.getAttribute('data-filter');
+      renderActivityFeed();
     });
   });
 }
 
 
-function cwRenderApp() {
-  cwRenderStats();
-  cwRenderIssuesTable();
-  cwRenderActiveIssuesSidebar();
-  cwRenderActivityFeed();
-  cwRenderProfileIssues();
-  cwRenderMap();
+function renderAppUI() {
+  renderStats();
+  renderIssuesTable();
+  renderActiveIssuesSidebar();
+  renderActivityFeed();
+  renderProfileIssues();
+  renderMaps();
 }
 
 
-function cwRenderStats() {
+function renderStats() {
   
-  const userReported = cwState.issues.filter(i => i.reporter === 'Resident User #402').length;
-  const userResolved = cwState.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
+  const userReported = appState.issues.filter(i => i.reporter === 'Resident User #402').length;
+  const userResolved = appState.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
 
   const reportedEl = document.getElementById('profile-reported-count');
   if (reportedEl) reportedEl.textContent = userReported;
@@ -1143,10 +1144,10 @@ function cwRenderStats() {
   if (resolvedEl) resolvedEl.textContent = userResolved;
 
   
-  const totalReports = cwState.issues.length;
-  const resolvedReports = cwState.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
-  const openReports = cwState.issues.filter(i => i.status === 'OPEN').length;
-  const pendingReports = cwState.issues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
+  const totalReports = appState.issues.length;
+  const resolvedReports = appState.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
+  const openReports = appState.issues.filter(i => i.status === 'OPEN').length;
+  const pendingReports = appState.issues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
 
   const totalEl = document.getElementById('stats-total-count');
   if (totalEl) totalEl.textContent = totalReports;
@@ -1162,7 +1163,7 @@ function cwRenderStats() {
 }
 
 
-function cwGetStatusBadgeClass(status) {
+function getStatusBadgeClass(status) {
   switch (status.toUpperCase()) {
     case 'OPEN': return 'badge-open';
     case 'PENDING': return 'badge-pending';
@@ -1173,18 +1174,18 @@ function cwGetStatusBadgeClass(status) {
 }
 
 
-function cwGetFilteredIssues() {
+function getFilteredIssues() {
   const statusFilterEl = document.getElementById('table-filter-status');
   const categoryFilterEl = document.getElementById('table-filter-category');
 
   const statusFilter = statusFilterEl ? statusFilterEl.value : 'all';
   const categoryFilter = categoryFilterEl ? categoryFilterEl.value : 'all';
 
-  return cwState.issues.filter(issue => {
+  return appState.issues.filter(issue => {
     const matchesSearch = 
-      issue.id.includes(cwState.searchQuery) ||
-      issue.title.toLowerCase().includes(cwState.searchQuery) ||
-      issue.location.toLowerCase().includes(cwState.searchQuery);
+      issue.id.includes(appState.searchQuery) ||
+      issue.title.toLowerCase().includes(appState.searchQuery) ||
+      issue.location.toLowerCase().includes(appState.searchQuery);
     
     const matchesStatus = (statusFilter === 'all') || (issue.status === statusFilter);
     const matchesCategory = (categoryFilter === 'all') || (issue.category === categoryFilter);
@@ -1194,11 +1195,11 @@ function cwGetFilteredIssues() {
 }
 
 
-function cwRenderIssuesTable() {
+function renderIssuesTable() {
   const tbody = document.getElementById('issues-table-body');
   if (!tbody) return;
 
-  const filtered = cwGetFilteredIssues();
+  const filtered = getFilteredIssues();
   tbody.innerHTML = '';
   
   if (filtered.length === 0) {
@@ -1215,7 +1216,7 @@ function cwRenderIssuesTable() {
       const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
       isOlderThan5Days = diffDays > 5;
     }
-    const hasPin = cwState.forcedHistoryPins && cwState.forcedHistoryPins.includes(issue.id);
+    const hasPin = appState.forcedHistoryPins && appState.forcedHistoryPins.includes(issue.id);
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1225,7 +1226,7 @@ function cwRenderIssuesTable() {
       <td>${issue.category}</td>
       <td>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="status-badge ${cwGetStatusBadgeClass(issue.status)}">${issue.status}</span>
+          <span class="status-badge ${getStatusBadgeClass(issue.status)}">${issue.status}</span>
           ${isOlderThan5Days ? `
             <button class="btn-toggle-table-pin" data-id="${issue.id}" style="background: #ffffff; border: 1.5px solid var(--border-gray); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border-radius: 4px; box-shadow: 1px 1px 0px #000000; outline: none;" title="${hasPin ? 'Remove Pin from Map' : 'Show Pin on Map'}">
               <i class="ti ${hasPin ? 'ti-map-pin-off' : 'ti-map-pin'}" style="font-size: 10px; color: #000000; font-weight: bold;"></i>
@@ -1239,7 +1240,7 @@ function cwRenderIssuesTable() {
     const cell = tr.querySelector('.issue-id-cell');
     if (cell) {
       cell.addEventListener('click', () => {
-        cwState.selectedIssueId = issue.id;
+        appState.selectedIssueId = issue.id;
         switchTab('map');
       });
     }
@@ -1250,19 +1251,19 @@ function cwRenderIssuesTable() {
       if (pinBtn) {
         pinBtn.addEventListener('click', (e) => {
           e.stopPropagation(); 
-          if (!cwState.forcedHistoryPins) {
-            cwState.forcedHistoryPins = [];
+          if (!appState.forcedHistoryPins) {
+            appState.forcedHistoryPins = [];
           }
-          const idx = cwState.forcedHistoryPins.indexOf(issue.id);
+          const idx = appState.forcedHistoryPins.indexOf(issue.id);
           if (idx === -1) {
-            cwState.forcedHistoryPins.push(issue.id);
+            appState.forcedHistoryPins.push(issue.id);
           } else {
-            cwState.forcedHistoryPins.splice(idx, 1);
+            appState.forcedHistoryPins.splice(idx, 1);
           }
-          localStorage.setItem('community_forced_history_pins', JSON.stringify(cwState.forcedHistoryPins));
+          localStorage.setItem('community_forced_history_pins', JSON.stringify(appState.forcedHistoryPins));
           
-          cwRenderMapMarkers();
-          cwRenderIssuesTable();
+          renderMapMarkers();
+          renderIssuesTable();
         });
       }
     }
@@ -1272,7 +1273,7 @@ function cwRenderIssuesTable() {
 }
 
 
-function cwRenderActiveIssuesSidebar() {
+function renderActiveIssuesSidebar() {
   const listContainer = document.getElementById('active-issues-list');
   if (!listContainer) return;
 
@@ -1280,7 +1281,7 @@ function cwRenderActiveIssuesSidebar() {
 
   let activeCount = 0;
 
-  cwState.issues.forEach(issue => {
+  appState.issues.forEach(issue => {
     if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') {
       return; 
     }
@@ -1301,12 +1302,12 @@ function cwRenderActiveIssuesSidebar() {
       <div class="sidebar-item-desc" style="margin-left: 24px;">${issue.description}</div>
       <div style="margin-top: 12px; margin-left: 24px; display:flex; justify-content:space-between; align-items:center;">
         <span style="font-size:11px; color:var(--text-muted);">Report #${issue.id}</span>
-        <span class="status-badge ${cwGetStatusBadgeClass(issue.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${issue.status}</span>
+        <span class="status-badge ${getStatusBadgeClass(issue.status)}" style="font-size: 9px; min-width: 65px; padding: 1px 4px;">${issue.status}</span>
       </div>
     `;
 
     item.addEventListener('click', () => {
-      cwState.selectedIssueId = issue.id;
+      appState.selectedIssueId = issue.id;
       switchTab('map');
     });
 
@@ -1319,11 +1320,11 @@ function cwRenderActiveIssuesSidebar() {
 }
 
 
-function cwRenderProfileIssues() {
+function renderProfileIssues() {
   const container = document.getElementById('profile-issues-list');
   if (!container) return;
 
-  const userIssues = cwState.issues.filter(i => i.reporter === 'Resident User #402');
+  const userIssues = appState.issues.filter(i => i.reporter === 'Resident User #402');
   container.innerHTML = '';
 
   if (userIssues.length === 0) {
@@ -1351,12 +1352,12 @@ function cwRenderProfileIssues() {
       </div>
       <div style="text-align: right;">
         <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">Reported: ${issue.reportedDate}</p>
-        <span class="status-badge ${cwGetStatusBadgeClass(issue.status)}" style="font-size:9px; min-width:70px; padding: 1px 4px;">${issue.status}</span>
+        <span class="status-badge ${getStatusBadgeClass(issue.status)}" style="font-size:9px; min-width:70px; padding: 1px 4px;">${issue.status}</span>
       </div>
     `;
 
     card.addEventListener('click', () => {
-      cwState.selectedIssueId = issue.id;
+      appState.selectedIssueId = issue.id;
       switchTab('map');
     });
 
@@ -1365,15 +1366,15 @@ function cwRenderProfileIssues() {
 }
 
 
-function cwRenderActivityFeed() {
+function renderActivityFeed() {
   const container = document.getElementById('activity-feed-list');
   if (!container) return;
 
   container.innerHTML = '';
 
-  let filtered = cwActivityLogs;
-  if (cwState.activityFilter !== 'all') {
-    filtered = cwActivityLogs.filter(log => log.type === cwState.activityFilter);
+  let filtered = activityLogs;
+  if (appState.activityFilter !== 'all') {
+    filtered = activityLogs.filter(log => log.type === appState.activityFilter);
   }
 
   if (filtered.length === 0) {
@@ -1414,7 +1415,7 @@ function cwRenderActivityFeed() {
       refLink.addEventListener('click', () => {
         const idMatch = refLink.textContent.match(/#(\d+)/);
         if (idMatch && idMatch[1]) {
-          cwState.selectedIssueId = idMatch[1];
+          appState.selectedIssueId = idMatch[1];
           switchTab('map');
         }
       });
@@ -1425,19 +1426,19 @@ function cwRenderActivityFeed() {
 }
 
 
-function cwRenderMap() {
-  if (!cwDashboardMap || !cwMainMap) return;
-  cwRenderMapMarkers();
-  cwRenderTrackingDetails();
+function renderMaps() {
+  if (!dashboardMap || !mainMap) return;
+  renderMapMarkers();
+  renderTrackingPanel();
 }
 
 
-function cwShouldShowMapPin(issue) {
+function shouldShowPinForIssue(issue) {
   if (issue.status !== 'RESOLVED' && issue.status !== 'CLOSED') {
     return true; 
   }
   
-  if (cwState.forcedHistoryPins && cwState.forcedHistoryPins.includes(issue.id)) {
+  if (appState.forcedHistoryPins && appState.forcedHistoryPins.includes(issue.id)) {
     return true;
   }
   if (!issue.resolvedDate) {
@@ -1449,17 +1450,17 @@ function cwShouldShowMapPin(issue) {
   return diffDays <= 5;
 }
 
-function cwRenderMapMarkers() {
+function renderMapMarkers() {
   
-  cwDashboardMarkers.forEach(m => cwDashboardMap.removeLayer(m));
-  cwMainMarkers.forEach(m => cwMainMap.removeLayer(m));
+  dashboardMarkers.forEach(m => dashboardMap.removeLayer(m));
+  mapMarkers.forEach(m => mainMap.removeLayer(m));
   
-  cwDashboardMarkers = [];
-  cwMainMarkers = [];
+  dashboardMarkers = [];
+  mapMarkers = [];
 
-  cwState.issues.forEach(issue => {
+  appState.issues.forEach(issue => {
     
-    if (!cwShouldShowMapPin(issue)) {
+    if (!shouldShowPinForIssue(issue)) {
       return;
     }
 
@@ -1484,32 +1485,32 @@ function cwRenderMapMarkers() {
     });
 
     
-    if (cwMainMap) {
+    if (mainMap) {
       const marker = L.marker([issue.coordinates.lat, issue.coordinates.lng], { icon: customIcon })
-        .addTo(cwMainMap);
+        .addTo(mainMap);
       
       
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        cwState.selectedIssueId = issue.id;
-        cwMainMap.setView([issue.coordinates.lat, issue.coordinates.lng], 16);
-        cwRenderTrackingDetails();
+        appState.selectedIssueId = issue.id;
+        mainMap.setView([issue.coordinates.lat, issue.coordinates.lng], 16);
+        renderTrackingPanel();
       });
 
-      cwMainMarkers.push(marker);
+      mapMarkers.push(marker);
     }
 
     
-    if (cwDashboardMap) {
+    if (dashboardMap) {
       const marker = L.marker([issue.coordinates.lat, issue.coordinates.lng], { icon: miniIcon })
-        .addTo(cwDashboardMap);
+        .addTo(dashboardMap);
       
-      cwDashboardMarkers.push(marker);
+      dashboardMarkers.push(marker);
     }
   });
 
   
-  if (cwDetectedCenter) {
+  if (detectedCenter) {
     const userLocationIcon = L.divIcon({
       className: 'custom-leaflet-marker user-location-marker-container',
       html: `<div class="marker-pin user-location"></div><div class="marker-label" style="background-color: #3b82f6; color: #ffffff; border-color: #3b82f6; font-weight: bold; font-family: var(--font-mono); font-size: 9px; padding: 1px 4px;">YOU</div>`,
@@ -1524,34 +1525,34 @@ function cwRenderMapMarkers() {
       iconAnchor: [7, 7]
     });
 
-    if (cwMainMap) {
-      const userMarker = L.marker(cwDetectedCenter, { icon: userLocationIcon })
-        .addTo(cwMainMap);
-      cwMainMarkers.push(userMarker);
+    if (mainMap) {
+      const userMarker = L.marker(detectedCenter, { icon: userLocationIcon })
+        .addTo(mainMap);
+      mapMarkers.push(userMarker);
     }
 
-    if (cwDashboardMap) {
-      const userMiniMarker = L.marker(cwDetectedCenter, { icon: userLocationMiniIcon })
-        .addTo(cwDashboardMap);
-      cwDashboardMarkers.push(userMiniMarker);
+    if (dashboardMap) {
+      const userMiniMarker = L.marker(detectedCenter, { icon: userLocationMiniIcon })
+        .addTo(dashboardMap);
+      dashboardMarkers.push(userMiniMarker);
     }
   }
 
   
-  if (cwState.activeTab === 'map' && cwState.selectedIssueId) {
-    const selected = cwState.issues.find(i => i.id === cwState.selectedIssueId);
-    if (selected && cwMainMap) {
-      cwMainMap.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
+  if (appState.activeTab === 'map' && appState.selectedIssueId) {
+    const selected = appState.issues.find(i => i.id === appState.selectedIssueId);
+    if (selected && mainMap) {
+      mainMap.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
     }
   }
 }
 
 
-function cwRenderTrackingDetails() {
+function renderTrackingPanel() {
   const panel = document.getElementById('tracking-detail-panel');
   if (!panel) return;
 
-  const issue = cwState.issues.find(i => i.id === cwState.selectedIssueId);
+  const issue = appState.issues.find(i => i.id === appState.selectedIssueId);
   
   if (!issue) {
     panel.innerHTML = `
@@ -1606,8 +1607,8 @@ function cwRenderTrackingDetails() {
     
     ${issue.status !== 'RESOLVED' && issue.status !== 'CLOSED' ? `
       <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
-        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${cwState.upvotedIssues.includes(issue.id) ? 'disabled' : ''}>
-          ${cwState.upvotedIssues.includes(issue.id) ? 'Upvoted' : 'Upvote'}
+        <button class="btn btn-secondary" id="btn-upvote-issue" style="flex:1;" ${appState.upvotedIssues.includes(issue.id) ? 'disabled' : ''}>
+          ${appState.upvotedIssues.includes(issue.id) ? 'Upvoted' : 'Upvote'}
         </button>
         <button class="btn btn-primary" id="btn-resolve-issue-mock" style="flex:1;">
           Resolve
@@ -1623,7 +1624,7 @@ function cwRenderTrackingDetails() {
         isOlderThan5Days = diffDays > 5;
       }
       if (isOlderThan5Days) {
-        const hasPin = cwState.forcedHistoryPins && cwState.forcedHistoryPins.includes(issue.id);
+        const hasPin = appState.forcedHistoryPins && appState.forcedHistoryPins.includes(issue.id);
         return `
           <div style="margin-top: auto; padding-top: 24px; display:flex; gap:8px;">
             <button class="btn ${hasPin ? 'btn-secondary' : 'btn-primary'}" id="btn-toggle-history-pin" style="flex:1;">
@@ -1652,16 +1653,16 @@ function cwRenderTrackingDetails() {
       upvoteBtn.textContent = 'Upvoted';
 
       
-      if (!cwState.upvotedIssues.includes(issue.id)) {
-        cwState.upvotedIssues.push(issue.id);
-        localStorage.setItem('community_upvoted_issues', JSON.stringify(cwState.upvotedIssues));
+      if (!appState.upvotedIssues.includes(issue.id)) {
+        appState.upvotedIssues.push(issue.id);
+        localStorage.setItem('community_upvoted_issues', JSON.stringify(appState.upvotedIssues));
       }
 
       
-      const customIdx = cwCustomIssues.findIndex(i => i.id === issue.id);
+      const customIdx = customIssues.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
-        cwCustomIssues[customIdx].upvotes = issue.upvotes;
-        localStorage.setItem('community_custom_issues', JSON.stringify(cwCustomIssues));
+        customIssues[customIdx].upvotes = issue.upvotes;
+        localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
       } else {
         const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
         defaultIssuesUpvotes[issue.id] = (defaultIssuesUpvotes[issue.id] || 0) + 1;
@@ -1676,10 +1677,10 @@ function cwRenderTrackingDetails() {
         tag: 'UPDATE',
         type: 'update'
       };
-      cwActivityLogs.unshift(newLog);
-      cwCustomLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(cwCustomLogs));
-      cwRenderApp();
+      activityLogs.unshift(newLog);
+      customLogs.unshift(newLog);
+      localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
+      renderAppUI();
     });
   }
 
@@ -1703,39 +1704,65 @@ function cwRenderTrackingDetails() {
         tag: 'RESOLVED',
         type: 'resolved'
       };
-      cwActivityLogs.unshift(newLog);
+      activityLogs.unshift(newLog);
 
       
-      const customIdx = cwCustomIssues.findIndex(i => i.id === issue.id);
+      const customIdx = customIssues.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
-        cwCustomIssues[customIdx].status = 'RESOLVED';
-        cwCustomIssues[customIdx].resolvedDate = issue.resolvedDate;
-        cwCustomIssues[customIdx].timeline = issue.timeline;
-        localStorage.setItem('community_custom_issues', JSON.stringify(cwCustomIssues));
+        customIssues[customIdx].status = 'RESOLVED';
+        customIssues[customIdx].resolvedDate = issue.resolvedDate;
+        customIssues[customIdx].timeline = issue.timeline;
+        localStorage.setItem('community_custom_issues', JSON.stringify(customIssues));
       }
 
-      cwCustomLogs.unshift(newLog);
-      localStorage.setItem('community_custom_activity_logs', JSON.stringify(cwCustomLogs));
+      customLogs.unshift(newLog);
+      localStorage.setItem('community_custom_activity_logs', JSON.stringify(customLogs));
 
-      cwRenderApp();
+      renderAppUI();
     });
   }
 
   const toggleHistoryPinBtn = document.getElementById('btn-toggle-history-pin');
   if (toggleHistoryPinBtn) {
     toggleHistoryPinBtn.addEventListener('click', () => {
-      if (!cwState.forcedHistoryPins) {
-        cwState.forcedHistoryPins = [];
+      if (!appState.forcedHistoryPins) {
+        appState.forcedHistoryPins = [];
       }
-      const idx = cwState.forcedHistoryPins.indexOf(issue.id);
+      const idx = appState.forcedHistoryPins.indexOf(issue.id);
       if (idx === -1) {
-        cwState.forcedHistoryPins.push(issue.id);
+        appState.forcedHistoryPins.push(issue.id);
       } else {
-        cwState.forcedHistoryPins.splice(idx, 1);
+        appState.forcedHistoryPins.splice(idx, 1);
       }
-      localStorage.setItem('community_forced_history_pins', JSON.stringify(cwState.forcedHistoryPins));
-      cwRenderMapMarkers();
-      cwRenderTrackingDetails();
+      localStorage.setItem('community_forced_history_pins', JSON.stringify(appState.forcedHistoryPins));
+      renderMapMarkers();
+      renderTrackingPanel();
     });
+  }
+}
+
+
+function migrateLegacyStorage() {
+  console.log("Running local storage naming migration checks...");
+  const legacyKeys = {
+    'cw_custom_issues': 'community_custom_issues',
+    'cw_custom_activity_logs': 'community_custom_activity_logs',
+    'cw_upvoted_issues': 'community_upvoted_issues',
+    'cw_forced_history_pins': 'community_forced_history_pins'
+  };
+  let migratedCount = 0;
+  for (const [legacyKey, newKey] of Object.entries(legacyKeys)) {
+    const data = localStorage.getItem(legacyKey);
+    if (data) {
+      localStorage.setItem(newKey, data);
+      localStorage.removeItem(legacyKey);
+      migratedCount++;
+      console.log(`Migrated legacy key "${legacyKey}" to "${newKey}".`);
+    }
+  }
+  if (migratedCount > 0) {
+    console.log(`Storage migration complete: Successfully migrated ${migratedCount} legacy keys.`);
+  } else {
+    console.log("Storage migration complete: No legacy formats detected.");
   }
 }
