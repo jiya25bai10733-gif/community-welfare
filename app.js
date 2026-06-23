@@ -1,4 +1,16 @@
+/**
+ * Community Welfare - Incident Reporting & Citizen Tracking Platform
+ * 
+ * Core client-side MVC state controller and UI synchronization engine.
+ * Renders incident maps, resolves geolocation via Photon/OSM APIs, handles offline storage,
+ * and generates Excel CSV report downloads natively.
+ */
 
+/**
+ * Core UI State Container
+ * Tracks active navigation tabs, filters, live query state, map selections,
+ * and the primary database of reported infrastructure complaints.
+ */
 const appState = {
   activeTab: 'dashboard',
   issues: [
@@ -178,6 +190,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+/**
+ * Data Restoration Loader
+ * Restores user reports, custom activity logs, and upvote interactions from local storage.
+ * Merges custom local records with preloaded regional mock data to populate the dashboard.
+ */
 function loadPersistedData() {
   try {
     customIssues = JSON.parse(localStorage.getItem('community_custom_issues')) || [];
@@ -204,6 +221,11 @@ function loadPersistedData() {
 }
 
 
+/**
+ * Connection Status Monitor
+ * Listens to browser network offline/online events and updates the header badge.
+ * Prompts visual indicator shifts to let users know if reports are queued locally.
+ */
 function setupConnectionStatus() {
   const statusEl = document.getElementById('connection-status');
   if (!statusEl) return;
@@ -240,6 +262,11 @@ function setDefaultFormCoordinates() {
 
 let autocompleteTimeout = null;
 
+/**
+ * Location Typeahead Auto-Suggestions
+ * Integrates Photon API to query landmark recommendations in real-time as you type.
+ * Autopopulates form coordinates and centers the interactive map on selections.
+ */
 function setupLocationAutocomplete() {
   const inputEl = document.getElementById('issue-location');
   const dropdownEl = document.getElementById('location-autocomplete-dropdown');
@@ -437,6 +464,12 @@ function renderAutocompleteResults(features, inputEl, dropdownEl) {
 }
 
 
+/**
+ * Core Geolocation Handler
+ * Requests browser GPS permission to center the experience locally.
+ * Employs a silent fallback to Faridabad City Center to guarantee service availability
+ * if permissions are denied or timeout occurs.
+ */
 function detectAndInitLocation() {
   console.log("Tracking location...");
   
@@ -484,6 +517,11 @@ function detectAndInitLocation() {
   );
 }
 
+/**
+ * Geolocation Fallback Initialization
+ * Default coordinator that places initial issues and centers map views around
+ * Faridabad City Center if location access is unavailable.
+ */
 function initFallbackLocation() {
   
   detectedCenter = [28.4089, 77.3178];
@@ -495,6 +533,11 @@ function initFallbackLocation() {
   updateLocationTexts("Faridabad", "Sector 15", "Mathura Road");
 }
 
+/**
+ * Incidents Coordinate Offset Calculator
+ * Re-positions the default mock issues around the user's detected coordinates
+ * using set offset variables to make them feel local to the neighborhood.
+ */
 function updateIssueCoordinatesRelativeTo(lat, lng) {
   
   const offsets = {
@@ -516,6 +559,11 @@ function updateIssueCoordinatesRelativeTo(lat, lng) {
   });
 }
 
+/**
+ * Map Views Sync Recenterer
+ * Adjusts zoom and centers both the dashboard minimap and main interactive maps
+ * to a set coordinate point simultaneously.
+ */
 function recenterMapsTo(lat, lng) {
   if (dashboardMap) {
     dashboardMap.setView([lat, lng], 13);
@@ -525,6 +573,11 @@ function recenterMapsTo(lat, lng) {
   }
 }
 
+/**
+ * Reverse Geocode Resolver
+ * Queries OpenStreetMap's free Nominatim API to translate lat/lng coordinates
+ * into readable suburb, road, and city text values.
+ */
 function fetchReverseGeocodeFor(lat, lng) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
   
@@ -557,6 +610,11 @@ function fetchReverseGeocodeFor(lat, lng) {
     });
 }
 
+/**
+ * Localized Text UI Updater
+ * Propagates resolved location text values to headers, profile labels,
+ * preloaded issue summaries, and activity log templates for regional localization.
+ */
 function updateLocationTexts(city, suburb, road) {
   
   const subtextEl = document.getElementById('dashboard-map-subtext');
@@ -610,6 +668,11 @@ function updateLocationTexts(city, suburb, road) {
 }
 
 
+/**
+ * Leaflet Maps Initializer
+ * Renders the dashboard leaflet minimap and the primary interactive leaflet map
+ * with openstreetmap tile layers.
+ */
 function initMaps() {
   
   const googleRoadTiles = 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
@@ -777,6 +840,11 @@ function switchTab(targetTabId) {
 }
 
 
+/**
+ * Report Submission Form Handler
+ * Validates report inputs, processes drag-and-drop screenshot attachments to Base64,
+ * pushes new records to state, and handles local storage persistence.
+ */
 function setupIssueFormHandlers() {
   const form = document.getElementById('issue-report-form');
   const cancelBtn = document.getElementById('btn-cancel-report');
@@ -924,6 +992,10 @@ function setupIssueFormHandlers() {
 }
 
 
+/**
+ * Map Interactions Controller
+ * Binds the 'Locate Me' floating action button to re-center maps on the user's GPS point.
+ */
 function setupMapControls() {
   const zoomInBtn = document.getElementById('zoom-in');
   if (zoomInBtn) {
@@ -963,6 +1035,11 @@ function setupMapControls() {
 }
 
 
+/**
+ * Search & Filters Coordinator
+ * Manages event listeners for global search input suggestions, status badges dropdowns,
+ * category dropdowns, and file export actions.
+ */
 function setupFiltersAndSearch() {
   
   const searchInput = document.getElementById('global-search');
@@ -1122,6 +1199,10 @@ function setupFiltersAndSearch() {
 }
 
 
+/**
+ * Master UI Coordinator
+ * Forces updates across all dynamic UI widgets: metrics, tables, sidebars, activity, and maps.
+ */
 function renderAppUI() {
   renderStats();
   renderIssuesTable();
@@ -1132,6 +1213,11 @@ function renderAppUI() {
 }
 
 
+/**
+ * System Metrics Calculator
+ * Re-evaluates state issues list and updates Total Reports, Open, Pending,
+ * and Resolved statistics counts in the sidebar widget.
+ */
 function renderStats() {
   
   const userReported = appState.issues.filter(i => i.reporter === 'Resident User #402').length;
@@ -1163,6 +1249,10 @@ function renderStats() {
 }
 
 
+/**
+ * CSS Badging Helper
+ * Maps status string values to appropriate grayscale wireframe status badge classes.
+ */
 function getStatusBadgeClass(status) {
   switch (status.toUpperCase()) {
     case 'OPEN': return 'badge-open';
@@ -1174,6 +1264,11 @@ function getStatusBadgeClass(status) {
 }
 
 
+/**
+ * Database Filtering Engine
+ * Filters the primary issues array based on active search bar queries,
+ * selected category dropdown options, and selected status options.
+ */
 function getFilteredIssues() {
   const statusFilterEl = document.getElementById('table-filter-status');
   const categoryFilterEl = document.getElementById('table-filter-category');
@@ -1195,6 +1290,11 @@ function getFilteredIssues() {
 }
 
 
+/**
+ * Issues Data Table Renderer
+ * Translates filtered issues array into table rows. Displays grayscale status badges,
+ * and appends map-pin toggle buttons next to badges for expired resolutions.
+ */
 function renderIssuesTable() {
   const tbody = document.getElementById('issues-table-body');
   if (!tbody) return;
@@ -1273,6 +1373,11 @@ function renderIssuesTable() {
 }
 
 
+/**
+ * Active Issues Sidebar Feed
+ * Displays only unresolved open or pending issues in the dashboard sidebar panel,
+ * hiding resolved/closed complaints.
+ */
 function renderActiveIssuesSidebar() {
   const listContainer = document.getElementById('active-issues-list');
   if (!listContainer) return;
@@ -1320,6 +1425,10 @@ function renderActiveIssuesSidebar() {
 }
 
 
+/**
+ * User Profile Reports Feed
+ * Populates the resident user profile tab with a list of complaints filed by the current user.
+ */
 function renderProfileIssues() {
   const container = document.getElementById('profile-issues-list');
   if (!container) return;
@@ -1366,6 +1475,10 @@ function renderProfileIssues() {
 }
 
 
+/**
+ * Live Activity Feed Renderer
+ * Updates the public actions log with administrative and citizen activity updates.
+ */
 function renderActivityFeed() {
   const container = document.getElementById('activity-feed-list');
   if (!container) return;
@@ -1426,6 +1539,10 @@ function renderActivityFeed() {
 }
 
 
+/**
+ * Leaflet Maps Synchronizer
+ * Re-draws all map markers and updates details tracking panels.
+ */
 function renderMaps() {
   if (!dashboardMap || !mainMap) return;
   renderMapMarkers();
@@ -1433,6 +1550,11 @@ function renderMaps() {
 }
 
 
+/**
+ * Incident Pin Expiration Filter
+ * Prevents map clutter by hiding resolved/closed pins older than 5 days.
+ * Allows overrides if issue is manually toggled active via the history pin button.
+ */
 function shouldShowPinForIssue(issue) {
   if (issue.status !== 'RESOLVED' && issue.status !== 'CLOSED') {
     return true; 
@@ -1450,6 +1572,11 @@ function shouldShowPinForIssue(issue) {
   return diffDays <= 5;
 }
 
+/**
+ * Incident Markers Painter
+ * Clears old leaflet markers and draws active, pending, resolved, and manually-forced
+ * history pins on both maps.
+ */
 function renderMapMarkers() {
   
   dashboardMarkers.forEach(m => dashboardMap.removeLayer(m));
@@ -1548,6 +1675,11 @@ function renderMapMarkers() {
 }
 
 
+/**
+ * Tracking Details Panel Controller
+ * Renders timelines, screenshots, upvotes, resolve options, and history map-pin toggles
+ * for the selected incident pin.
+ */
 function renderTrackingPanel() {
   const panel = document.getElementById('tracking-detail-panel');
   if (!panel) return;
@@ -1742,6 +1874,10 @@ function renderTrackingPanel() {
 }
 
 
+/**
+ * Storage Schema Migrator
+ * Automatically maps and cleans up legacy storage keys on startup to ensure user data continuity.
+ */
 function migrateLegacyStorage() {
   console.log("Running local storage naming migration checks...");
   const legacyKeys = {
