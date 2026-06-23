@@ -154,6 +154,7 @@ let myLoc = [28.4089, 77.3178];
 let savedReports = [];
 let auditTrail = [];
 let attachedScreenshotBase64 = null;
+let locationFieldModified = false;
 
 document.addEventListener('DOMContentLoaded', () => {
   migrateWelfareStorageKeys();
@@ -260,6 +261,7 @@ function initializeIncidentAddressTypeahead() {
   if (!inputEl || !dropdownEl) return;
 
   inputEl.addEventListener('input', () => {
+    locationFieldModified = true;
     const val = inputEl.value.trim();
     clearTimeout(searchTimer);
     
@@ -410,6 +412,7 @@ function renderAddressSuggestions(features, inputEl, dropdownEl) {
     item.textContent = formattedAddress;
     
     item.addEventListener('click', () => {
+      locationFieldModified = false;
       inputEl.value = formattedAddress;
       dropdownEl.style.display = 'none';
       
@@ -600,10 +603,43 @@ function initializeIncidentMaps() {
   const interactiveMapEl = document.getElementById('interactive-map');
   if (interactiveMapEl) {
     interactiveMap = L.map('interactive-map', {
-      zoomControl: false
+      zoomControl: false,
+      doubleClickZoom: false
     }).setView(myLoc, reportStore.zoomLevel);
 
     L.tileLayer(googleRoadTiles, tileOptions).addTo(interactiveMap);
+
+    interactiveMap.on('dblclick', async (e) => {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      updateDraftIncidentPin(lat, lng, true, false);
+      locationFieldModified = false;
+      
+      const locField = document.getElementById('issue-location');
+      if (locField) {
+        locField.value = "Fetching address...";
+      }
+
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+      try {
+        const response = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+        if (response.ok) {
+          const data = await response.json();
+          const parts = [];
+          const address = data.address || {};
+          if (address.road) parts.push(address.road);
+          if (address.suburb || address.neighbourhood) parts.push(address.suburb || address.neighbourhood);
+          if (address.city || address.town || address.village) parts.push(address.city || address.town || address.village);
+          const formattedAddress = parts.join(', ') || data.display_name || 'Selected Map Location';
+          if (locField) locField.value = formattedAddress;
+        } else {
+          if (locField) locField.value = `Location near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        }
+      } catch (err) {
+        console.error("Reverse geocoding failed on map double click:", err);
+        if (locField) locField.value = `Location near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      }
+    });
   }
 }
 
@@ -796,6 +832,7 @@ function handleIncidentReportSubmit() {
 
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
+      locationFieldModified = false;
       if (form) form.reset();
       if (filePreview) filePreview.style.display = 'none';
       attachedScreenshotBase64 = null;
@@ -814,15 +851,45 @@ function handleIncidentReportSubmit() {
   }
 
   if (form) {
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       
       const category = document.getElementById('issue-category').value;
       const title = document.getElementById('issue-summary').value;
       const location = document.getElementById('issue-location').value;
       const description = document.getElementById('issue-description').value || 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
-      const lat = parseFloat(document.getElementById('issue-lat').value);
-      const lng = parseFloat(document.getElementById('issue-lng').value);
+      
+      let lat = parseFloat(document.getElementById('issue-lat').value);
+      let lng = parseFloat(document.getElementById('issue-lng').value);
+
+      if (locationFieldModified && location && location.trim().length >= 3) {
+        let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(location.trim())}&limit=1`;
+        if (myLoc && myLoc.length === 2) {
+          url += `&lat=${myLoc[0]}&lon=${myLoc[1]}`;
+        }
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.features && data.features.length > 0) {
+              const geom = data.features[0].geometry;
+              if (geom && geom.coordinates && geom.coordinates.length === 2) {
+                lng = geom.coordinates[0];
+                lat = geom.coordinates[1];
+                
+                const latField = document.getElementById('issue-lat');
+                const lngField = document.getElementById('issue-lng');
+                if (latField) latField.value = lat.toFixed(5);
+                if (lngField) lngField.value = lng.toFixed(5);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Geocoding during submit failed, falling back to form coords:", err);
+        }
+      }
+
+      locationFieldModified = false;
       
       const newId = String(Math.floor(1000 + Math.random() * 9000));
 
