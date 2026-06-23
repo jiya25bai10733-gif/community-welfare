@@ -196,28 +196,27 @@ document.addEventListener('DOMContentLoaded', () => {
  * Merges custom local records with preloaded regional mock data to populate the dashboard.
  */
 function loadPersistedData() {
-  try {
-    customIssues = JSON.parse(localStorage.getItem('community_custom_issues')) || [];
-    customLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
-    appState.upvotedIssues = JSON.parse(localStorage.getItem('community_upvoted_issues')) || [];
+     try {
+       customIssues = JSON.parse(localStorage.getItem("community_custom_issues")) || [];
+       customLogs = JSON.parse(localStorage.getItem('community_custom_activity_logs')) || [];
+       appState.upvotedIssues = JSON.parse(localStorage.getItem("community_upvoted_issues")) || [];
     appState.forcedHistoryPins = JSON.parse(localStorage.getItem('community_forced_history_pins')) || [];
-    
-    
-    const defaultIssuesUpvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
-    appState.issues.forEach(issue => {
-      if (defaultIssuesUpvotes[issue.id]) {
-        issue.upvotes = (issue.upvotes || 0) + defaultIssuesUpvotes[issue.id];
-      }
-    });
-  } catch (e) {
-    console.error("Failed to load local storage data:", e);
-  }
+       
+       var default_upvotes = JSON.parse(localStorage.getItem('community_default_issues_upvotes')) || {};
+       appState.issues.forEach(function(issue) {
+           let existing_val = default_upvotes[issue.id];
+           if (existing_val != undefined) {
+               let current_upvotes = issue.upvotes;
+               if (!current_upvotes) current_upvotes = 0;
+               issue.upvotes = current_upvotes + existing_val;
+           }
+       });
+     } catch (err) {
+       console.error("Failed to load local storage data:", err);
+     }
 
-  
-  appState.issues = [...customIssues, ...appState.issues];
-  
-  
-  activityLogs = [...customLogs, ...activityLogs];
+     appState.issues = [...customIssues, ...appState.issues];
+    activityLogs = [...customLogs, ...activityLogs];
 }
 
 
@@ -227,27 +226,30 @@ function loadPersistedData() {
  * Prompts visual indicator shifts to let users know if reports are queued locally.
  */
 function setupConnectionStatus() {
-  const statusEl = document.getElementById('connection-status');
-  if (!statusEl) return;
+  var status_el = document.getElementById("connection-status");
+  if (!status_el) {
+     return;
+  }
 
   function updateStatus() {
-    if (navigator.onLine) {
-      statusEl.textContent = "ONLINE";
-      statusEl.style.backgroundColor = "#1f2937";
-      statusEl.style.color = "#ffffff";
-      statusEl.style.borderColor = "var(--border-gray)";
-      statusEl.style.borderStyle = "solid";
+    var is_online = navigator.onLine;
+    if (is_online == true) {
+      status_el.textContent = 'ONLINE';
+      status_el.style.backgroundColor = '#1f2937';
+      status_el.style.color = '#ffffff';
+      status_el.style.borderColor = "var(--border-gray)";
+      status_el.style.borderStyle = "solid";
     } else {
-      statusEl.textContent = "OFFLINE";
-      statusEl.style.backgroundColor = "#ffffff";
-      statusEl.style.color = "#000000";
-      statusEl.style.borderColor = "#ff0000";
-      statusEl.style.borderStyle = "dashed";
+      status_el.textContent = 'OFFLINE';
+      status_el.style.backgroundColor = '#ffffff';
+      status_el.style.color = '#000000';
+      status_el.style.borderColor = '#ff0000';
+      status_el.style.borderStyle = 'dashed';
     }
   }
 
-  window.addEventListener('online', updateStatus);
-  window.addEventListener('offline', updateStatus);
+  window.addEventListener('online', function() { updateStatus(); });
+  window.addEventListener('offline', function() { updateStatus(); });
   updateStatus(); 
 }
 
@@ -1254,13 +1256,17 @@ function renderStats() {
  * Maps status string values to appropriate grayscale wireframe status badge classes.
  */
 function getStatusBadgeClass(status) {
-  switch (status.toUpperCase()) {
-    case 'OPEN': return 'badge-open';
-    case 'PENDING': return 'badge-pending';
-    case 'CLOSED': return 'badge-closed';
-    case 'RESOLVED': return 'badge-resolved';
-    default: return 'badge-open';
+  var stat = status.toUpperCase();
+  if (stat == 'OPEN') {
+     return "badge-open";
+  } else if (stat == 'PENDING') {
+     return 'badge-pending';
+  } else if (stat == 'CLOSED') {
+     return "badge-closed";
+  } else if (stat == 'RESOLVED') {
+     return "badge-resolved";
   }
+  return "badge-open";
 }
 
 
@@ -1556,20 +1562,25 @@ function renderMaps() {
  * Allows overrides if issue is manually toggled active via the history pin button.
  */
 function shouldShowPinForIssue(issue) {
-  if (issue.status !== 'RESOLVED' && issue.status !== 'CLOSED') {
+  var is_resolved = (issue.status == 'RESOLVED' || issue.status == 'CLOSED');
+  if (!is_resolved) {
     return true; 
   }
   
-  if (appState.forcedHistoryPins && appState.forcedHistoryPins.includes(issue.id)) {
+  if (appState.forcedHistoryPins && appState.forcedHistoryPins.indexOf(issue.id) > -1) {
     return true;
   }
   if (!issue.resolvedDate) {
     return true; 
   }
-  const resolvedTime = new Date(issue.resolvedDate).getTime();
-  const currentTime = new Date().getTime();
-  const diffDays = (currentTime - resolvedTime) / (1000 * 60 * 60 * 24);
-  return diffDays <= 5;
+  var resolved_ms = new Date(issue.resolvedDate).getTime();
+  var current_ms = new Date().getTime();
+  var elapsed_days = (current_ms - resolved_ms) / (1000 * 60 * 60 * 24);
+  
+  if (elapsed_days <= 5) {
+     return true;
+  }
+  return false;
 }
 
 /**
