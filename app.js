@@ -175,6 +175,34 @@ document.addEventListener('DOMContentLoaded', () => {
   reloadReportsData();
 });
 
+function isIssueVisible(issue) {
+  const isCustomUserReport = savedReports.some(r => r.id === issue.id);
+  if (isCustomUserReport) {
+    return true;
+  }
+  if (issue.coordinates && issue.coordinates.lat && issue.coordinates.lng && myLoc) {
+    const latDiff = Math.abs(issue.coordinates.lat - myLoc[0]);
+    const lngDiff = Math.abs(issue.coordinates.lng - myLoc[1]);
+    return latDiff < 0.2 && lngDiff < 0.2;
+  }
+  return true;
+}
+
+function isActivityLogVisible(log) {
+  if (['log-1', 'log-2', 'log-3', 'log-4', 'log-5'].includes(log.id)) {
+    return true;
+  }
+  const match = log.desc.match(/Issue #(\d+)/);
+  if (match && match[1]) {
+    const issueId = match[1];
+    const issue = reportStore.issues.find(i => i.id === issueId);
+    if (issue) {
+      return isIssueVisible(issue);
+    }
+  }
+  return true;
+}
+
 function loadStoredIncidents() {
   try {
     savedReports = JSON.parse(localStorage.getItem("community_custom_issues")) || [];
@@ -912,10 +940,12 @@ function setupIncidentSearchFilters() {
       }
 
       const matches = reportStore.issues.filter(issue => 
-        issue.title.toLowerCase().indexOf(query) !== -1 || 
-        issue.description.toLowerCase().indexOf(query) !== -1 || 
-        issue.location.toLowerCase().indexOf(query) !== -1 || 
-        issue.id.indexOf(query) !== -1
+        isIssueVisible(issue) && (
+          issue.title.toLowerCase().indexOf(query) !== -1 || 
+          issue.description.toLowerCase().indexOf(query) !== -1 || 
+          issue.location.toLowerCase().indexOf(query) !== -1 || 
+          issue.id.indexOf(query) !== -1
+        )
       );
 
       if (matches.length === 0) {
@@ -1052,8 +1082,10 @@ function reloadReportsData() {
 }
 
 function updateDashboardStats() {
-  const userReported = reportStore.issues.filter(i => i.reporter === 'Resident User #402').length;
-  const userResolved = reportStore.issues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
+  const visibleIssues = reportStore.issues.filter(isIssueVisible);
+
+  const userReported = visibleIssues.filter(i => i.reporter === 'Resident User #402').length;
+  const userResolved = visibleIssues.filter(i => i.reporter === 'Resident User #402' && (i.status === 'RESOLVED' || i.status === 'CLOSED')).length;
 
   const reportedEl = document.getElementById('profile-reported-count');
   if (reportedEl) reportedEl.textContent = userReported;
@@ -1061,10 +1093,10 @@ function updateDashboardStats() {
   const resolvedEl = document.getElementById('profile-resolved-count');
   if (resolvedEl) resolvedEl.textContent = userResolved;
 
-  const totalReports = reportStore.issues.length;
-  const resolvedReports = reportStore.issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
-  const openReports = reportStore.issues.filter(i => i.status === 'OPEN').length;
-  const pendingReports = reportStore.issues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
+  const totalReports = visibleIssues.length;
+  const resolvedReports = visibleIssues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
+  const openReports = visibleIssues.filter(i => i.status === 'OPEN').length;
+  const pendingReports = visibleIssues.filter(i => i.status === 'PENDING' || i.status === 'IN PROGRESS').length;
 
   const totalEl = document.getElementById('stats-total-count');
   if (totalEl) totalEl.textContent = totalReports;
@@ -1101,6 +1133,7 @@ function applyReportFilters() {
   const categoryFilter = categoryFilterEl ? categoryFilterEl.value : 'all';
 
   return reportStore.issues.filter(issue => {
+    if (!isIssueVisible(issue)) return false;
     // Older localStorage entries may not contain description, location or ID
     const query = reportStore.searchQuery || '';
     const id = issue.id || '';
@@ -1203,6 +1236,9 @@ function renderActiveIncidentsSidebar() {
   let activeCount = 0;
 
   for (const issue of reportStore.issues) {
+    if (!isIssueVisible(issue)) {
+      continue;
+    }
     if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') {
       continue; 
     }
@@ -1244,7 +1280,7 @@ function renderCitizenReportHistory() {
   const container = document.getElementById('profile-issues-list');
   if (!container) return;
 
-  const userIssues = reportStore.issues.filter(i => i.reporter === 'Resident User #402');
+  const userIssues = reportStore.issues.filter(i => i.reporter === 'Resident User #402' && isIssueVisible(i));
   container.innerHTML = '';
 
   if (userIssues.length === 0) {
@@ -1291,9 +1327,9 @@ function renderIncidentActivityTimeline() {
 
   container.innerHTML = '';
 
-  let filtered = activityRecords;
+  let filtered = activityRecords.filter(isActivityLogVisible);
   if (reportStore.activityFilter !== 'all') {
-    filtered = activityRecords.filter(log => log.type === reportStore.activityFilter);
+    filtered = filtered.filter(log => log.type === reportStore.activityFilter);
   }
 
   if (filtered.length === 0) {
@@ -1355,6 +1391,9 @@ function updateIssueMarkers() {
   interactiveMarkers = [];
 
   for (const issue of reportStore.issues) {
+    if (!isIssueVisible(issue)) {
+      continue;
+    }
     // Older localStorage entries may not contain coordinates
     if (!issue.coordinates || !issue.coordinates.lat || !issue.coordinates.lng) {
       continue;
@@ -1448,7 +1487,7 @@ function updateIssueMarkers() {
   }
 
   if (reportStore.activeTab === 'map' && reportStore.selectedIssueId) {
-    const selected = reportStore.issues.find(i => i.id === reportStore.selectedIssueId);
+    const selected = reportStore.issues.find(i => i.id === reportStore.selectedIssueId && isIssueVisible(i));
     if (selected && interactiveMap) {
       interactiveMap.setView([selected.coordinates.lat, selected.coordinates.lng], 16);
     }
@@ -1459,7 +1498,7 @@ function renderIncidentDetailsCard() {
   const panel = document.getElementById('tracking-detail-panel');
   if (!panel) return;
 
-  const issue = reportStore.issues.find(i => i.id === reportStore.selectedIssueId);
+  const issue = reportStore.issues.find(i => i.id === reportStore.selectedIssueId && isIssueVisible(i));
   
   if (!issue) {
     panel.innerHTML = `
@@ -1587,7 +1626,7 @@ function renderIncidentDetailsCard() {
         tag: 'UPDATE',
         type: 'update'
       };
-      incidentAuditTrail.unshift(newLog);
+      activityRecords.unshift(newLog);
       auditTrail.unshift(newLog);
       try {
         localStorage.setItem('community_custom_activity_logs', JSON.stringify(auditTrail));
@@ -1617,7 +1656,7 @@ function renderIncidentDetailsCard() {
         tag: 'RESOLVED',
         type: 'resolved'
       };
-      incidentAuditTrail.unshift(newLog);
+      activityRecords.unshift(newLog);
 
       const customIdx = savedReports.findIndex(i => i.id === issue.id);
       if (customIdx !== -1) {
